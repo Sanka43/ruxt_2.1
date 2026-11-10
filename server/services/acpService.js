@@ -383,6 +383,7 @@ class AcpEngine {
     promptText,
     systemPrompt = null,
     history = [],
+    images = [],
     model = 'flash',
     customBinaryPath = null,
     cwd = null,
@@ -411,9 +412,22 @@ class AcpEngine {
     this.activePromptDeferred = deferred;
 
     try {
+      const promptItems = [{ type: 'text', text: fullPrompt }];
+      if (images && Array.isArray(images) && images.length > 0) {
+        for (const img of images) {
+          if (!img) continue;
+          const rawBase64 = img.replace(/^data:image\/[a-z]+;base64,/, '');
+          promptItems.push({
+            type: 'image',
+            data: rawBase64,
+            mimeType: 'image/jpeg'
+          });
+        }
+      }
+
       const res = await this.sendRequest('session/prompt', {
         sessionId: this.sessionId,
-        prompt: [{ type: 'text', text: fullPrompt }]
+        prompt: promptItems
       }, 60000);
 
       const outputContent = deferred.accumulatedText.trim();

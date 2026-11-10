@@ -135,6 +135,165 @@ const DEFAULT_SPECIALISTS = [
   { slug: 'numbers', name: 'Numbers', role: 'Quantitative Data Analyst', avatar: '/agent-avatars/numbers.png' }
 ];
 
+const DOMAIN_DEFINITIONS = [
+  {
+    id: 'web_tech',
+    label: 'Web & Software Development',
+    tokens: [
+      'web', 'frontend', 'front-end', 'front end', 'backend', 'back-end', 'react', 'next', 'vue',
+      'tailwind', 'css', 'html', 'js', 'ts', 'javascript', 'typescript', 'ui', 'ux', 'design',
+      'site', 'website', 'page', 'dashboard', 'app', 'application', 'dev', 'develop', 'development',
+      'developmet', 'coding', 'code', 'software', 'interface', 'vite', 'node', 'fullstack'
+    ],
+    matchingSlugs: ['julian-vance', 'noah-reed'],
+    conflictingSlugs: ['elena-voss-chess']
+  },
+  {
+    id: 'devops_cloud',
+    label: 'Cloud & Infrastructure DevOps',
+    tokens: [
+      'cloud', 'devops', 'docker', 'kubernetes', 'k8s', 'aws', 'azure', 'gcp', 'ci/cd',
+      'deploy', 'deployment', 'server', 'infrastructure', 'infra', 'linux', 'security', 'pipeline'
+    ],
+    matchingSlugs: ['noah-reed', 'julian-vance'],
+    conflictingSlugs: ['elena-voss-chess']
+  },
+  {
+    id: 'finance_accounting',
+    label: 'Finance, Tax & Accounting',
+    tokens: [
+      'finance', 'financial', 'budget', 'revenue', 'accounting', 'tax', 'taxes', 'audit',
+      'auditing', 'profit', 'valuation', 'forecast', 'fiscal', 'investment', 'balance sheet',
+      'cash flow', 'earnings', 'money', 'cost'
+    ],
+    matchingSlugs: ['maya-brooks', 'numbers', 'noah-reed'],
+    conflictingSlugs: ['elena-voss-chess', 'julian-vance']
+  },
+  {
+    id: 'data_analysis',
+    label: 'Quantitative Data & Spreadsheets',
+    tokens: [
+      'data', 'analytics', 'analysis', 'quantitative', 'spreadsheet', 'excel', 'numbers',
+      'metrics', 'formula', 'statistics', 'math', 'csv', 'calculation', 'table', 'computation'
+    ],
+    matchingSlugs: ['numbers', 'maya-brooks'],
+    conflictingSlugs: ['elena-voss-chess']
+  },
+  {
+    id: 'legal',
+    label: 'Legal & Compliance',
+    tokens: [
+      'legal', 'law', 'lawyer', 'contract', 'contracts', 'agreement', 'compliance',
+      'terms', 'nda', 'regulation', 'dispute', 'counsel', 'license', 'gdpr', 'policy'
+    ],
+    matchingSlugs: ['marcus-sterling', 'noah-reed'],
+    conflictingSlugs: ['elena-voss-chess']
+  },
+  {
+    id: 'chess_gaming',
+    label: 'Chess & Game Coaching',
+    tokens: [
+      'chess', 'game', 'gaming', 'board', 'boardgame', 'tactics', 'gambit', 'endgame',
+      'opening', 'coach', 'coaching', 'checkmate', 'grandmaster', 'puzzle', 'play'
+    ],
+    matchingSlugs: ['elena-voss-chess'],
+    conflictingSlugs: ['julian-vance', 'maya-brooks', 'marcus-sterling', 'numbers', 'noah-reed']
+  }
+];
+
+function evaluateMissionSquadFit(missionText, selectedSlugs, specialistList) {
+  const text = (missionText || '').toLowerCase().trim();
+  if (!text || text.length < 2) {
+    return { mismatched: [], recommended: [], aligned: [] };
+  }
+
+  const words = text.split(/[\s,./\\_-]+/).filter(Boolean);
+
+  const activeDomains = [];
+  for (const domain of DOMAIN_DEFINITIONS) {
+    let score = 0;
+    for (const token of domain.tokens) {
+      if (text.includes(token) || words.some(w => w.startsWith(token) || token.startsWith(w))) {
+        score++;
+      }
+    }
+    if (score > 0) {
+      activeDomains.push({ domain, score });
+    }
+  }
+
+  activeDomains.sort((a, b) => b.score - a.score);
+
+  const selectedSet = new Set(selectedSlugs || []);
+  const mismatched = [];
+  const recommended = [];
+  const aligned = [];
+
+  if (activeDomains.length > 0) {
+    const primaryDomain = activeDomains[0].domain;
+    const allConflictingSlugs = new Set();
+    const allMatchingSlugs = new Set();
+
+    for (const item of activeDomains) {
+      item.domain.conflictingSlugs.forEach(s => allConflictingSlugs.add(s));
+      item.domain.matchingSlugs.forEach(s => allMatchingSlugs.add(s));
+    }
+
+    // Never conflict if the agent also matches any active domain
+    for (const slug of allMatchingSlugs) {
+      allConflictingSlugs.delete(slug);
+    }
+
+    for (const agent of specialistList) {
+      if (agent.slug === 'ruxt') continue;
+      const isSelected = selectedSet.has(agent.slug);
+
+      if (isSelected) {
+        if (allConflictingSlugs.has(agent.slug)) {
+          mismatched.push({
+            slug: agent.slug,
+            name: agent.name,
+            role: agent.role,
+            avatar: agent.avatar,
+            reason: `${agent.name} (${agent.role}) does not match ${primaryDomain.label}.`
+          });
+        } else {
+          aligned.push({
+            slug: agent.slug,
+            name: agent.name,
+            role: agent.role,
+            avatar: agent.avatar
+          });
+        }
+      } else {
+        if (allMatchingSlugs.has(agent.slug) && !allConflictingSlugs.has(agent.slug)) {
+          recommended.push({
+            slug: agent.slug,
+            name: agent.name,
+            role: agent.role,
+            avatar: agent.avatar,
+            reason: `Recommended specialist for ${primaryDomain.label}.`
+          });
+        }
+      }
+    }
+  } else {
+    for (const agent of specialistList) {
+      if (agent.slug === 'ruxt') continue;
+      if (selectedSet.has(agent.slug)) {
+        aligned.push({
+          slug: agent.slug,
+          name: agent.name,
+          role: agent.role,
+          avatar: agent.avatar
+        });
+      }
+    }
+  }
+
+  return { mismatched, recommended, aligned };
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('chat');
   const [agents, setAgents] = useState([]);
@@ -181,6 +340,10 @@ export default function App() {
   // Inter-Agent Right-Side Consultation Popup State
   const [activeSubChatPopup, setActiveSubChatPopup] = useState(null);
 
+  // Live Desktop & Vision Engine Control States
+  const [isDesktopRunning, setIsDesktopRunning] = useState(false);
+  const [activeDesktopGoal, setActiveDesktopGoal] = useState('');
+
   // Floating Modern Input & Tooling States (Matching RuXt Assistant Design)
   const [isTurboEnabled, setIsTurboEnabled] = useState(false);
   const [selectedWorkspaceName, setSelectedWorkspaceName] = useState('Primary Workspace');
@@ -200,6 +363,10 @@ export default function App() {
   const [newTeamTitle, setNewTeamTitle] = useState('');
   const [newTeamDescription, setNewTeamDescription] = useState('');
   const [newTeamSelectedAgents, setNewTeamSelectedAgents] = useState(['julian-vance', 'noah-reed']);
+  const [squadAlignment, setSquadAlignment] = useState({ mismatched: [], recommended: [], aligned: [] });
+  const [isAnalyzingSquad, setIsAnalyzingSquad] = useState(false);
+  const [showMismatchConfirmModal, setShowMismatchConfirmModal] = useState(false);
+  const [teamToDelete, setTeamToDelete] = useState(null);
   const [customTeams, setCustomTeams] = useState(() => {
     try {
       const saved = localStorage.getItem('ruxt_custom_teams');
@@ -264,22 +431,91 @@ export default function App() {
     );
   };
 
-  const handleCreateTeam = (e) => {
-    if (e) e.preventDefault();
+  const handleRemoveSpecialist = (slug) => {
+    setNewTeamSelectedAgents(prev => prev.filter(s => s !== slug));
+    showNotification('Removed specialist from team selection');
+  };
+
+  const handleAddSpecialist = (slug) => {
+    setNewTeamSelectedAgents(prev => prev.includes(slug) ? prev : [...prev, slug]);
+    showNotification('Added specialist to team selection');
+  };
+
+  const handleRemoveAllMismatched = () => {
+    const mismatchedSlugs = new Set(squadAlignment.mismatched.map(m => m.slug));
+    setNewTeamSelectedAgents(prev => prev.filter(slug => !mismatchedSlugs.has(slug)));
+    showNotification(`Removed ${squadAlignment.mismatched.length} mismatched specialist(s)`);
+  };
+
+  const handleAddAllRecommended = () => {
+    const recSlugs = squadAlignment.recommended.map(r => r.slug);
+    setNewTeamSelectedAgents(prev => Array.from(new Set([...prev, ...recSlugs])));
+    showNotification(`Added ${recSlugs.length} recommended specialist(s) to team`);
+  };
+
+  // Real-time dynamic mission & specialist alignment analysis
+  useEffect(() => {
+    if (!isCreateTeamOpen) return;
+    
+    // 1. Instant client-side analysis
+    const instantResult = evaluateMissionSquadFit(newTeamDescription, newTeamSelectedAgents, specialistAgents);
+    setSquadAlignment(instantResult);
+
+    // 2. Debounced deep server/AI alignment analysis if mission has substance
+    if (!newTeamDescription.trim() || newTeamDescription.trim().length < 5) return;
+
+    const timer = setTimeout(async () => {
+      setIsAnalyzingSquad(true);
+      try {
+        const res = await fetch('/api/agents/analyze-mission', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mission: newTeamDescription,
+            selectedSlugs: newTeamSelectedAgents
+          })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.success) {
+            setSquadAlignment({
+              mismatched: data.mismatched || instantResult.mismatched,
+              recommended: data.recommended || instantResult.recommended,
+              aligned: data.aligned || instantResult.aligned
+            });
+          }
+        }
+      } catch (_) {
+        // Fallback already active via instantResult
+      } finally {
+        setIsAnalyzingSquad(false);
+      }
+    }, 450);
+
+    return () => clearTimeout(timer);
+  }, [isCreateTeamOpen, newTeamDescription, newTeamSelectedAgents, specialistAgents]);
+
+  const executeCreateTeam = (overrideSlugs = null) => {
+    const rawSlugs = overrideSlugs || newTeamSelectedAgents;
+    const selectedSlugs = rawSlugs.filter(s => s !== 'ruxt');
+
     if (!newTeamTitle.trim()) {
       showNotification('Please enter a team title', 'error');
       return;
     }
-    if (newTeamSelectedAgents.length === 0) {
-      showNotification('Please select at least 1 agent for the team', 'error');
+    if (!newTeamDescription.trim()) {
+      showNotification('Mission / Objective is strictly required to assemble a squad', 'error');
+      return;
+    }
+    if (selectedSlugs.length === 0) {
+      showNotification('Please select at least 1 specialist for the team', 'error');
       return;
     }
 
-    const selectedSlugs = newTeamSelectedAgents.filter(s => s !== 'ruxt');
     const team = {
       id: 'team-' + Date.now(),
       title: newTeamTitle.trim(),
-      description: newTeamDescription.trim() || `${selectedSlugs.length} specialists team`,
+      description: newTeamDescription.trim(),
       agentSlugs: selectedSlugs,
       createdAt: new Date().toISOString()
     };
@@ -290,13 +526,60 @@ export default function App() {
     setNewTeamTitle('');
     setNewTeamDescription('');
     setNewTeamSelectedAgents(['julian-vance']);
+    setSquadAlignment({ mismatched: [], recommended: [], aligned: [] });
+    setShowMismatchConfirmModal(false);
     setIsCreateTeamOpen(false);
+  };
+
+  const handleCreateTeam = (e) => {
+    if (e) e.preventDefault();
+    if (!newTeamTitle.trim()) {
+      showNotification('Please enter a team title', 'error');
+      return;
+    }
+    if (!newTeamDescription.trim()) {
+      showNotification('Mission / Objective is required to assemble a squad', 'error');
+      return;
+    }
+    if (newTeamSelectedAgents.length === 0) {
+      showNotification('Please select at least 1 agent for the team', 'error');
+      return;
+    }
+
+    // Immediately evaluate alignment synchronously to guarantee zero bypass
+    const checkFit = evaluateMissionSquadFit(newTeamDescription, newTeamSelectedAgents, specialistAgents);
+    if (checkFit.mismatched && checkFit.mismatched.length > 0) {
+      setSquadAlignment(checkFit);
+      setShowMismatchConfirmModal(true);
+      showNotification(`⚠️ Squad Alignment Notice: ${checkFit.mismatched.length} specialist(s) do not match this mission`, 'warning');
+      return;
+    }
+
+    executeCreateTeam();
+  };
+
+  const promptDeleteTeam = (team, e) => {
+    if (e) e.stopPropagation();
+    setTeamToDelete(team);
+  };
+
+  const confirmDeleteTeam = () => {
+    if (!teamToDelete) return;
+    const deletedTitle = teamToDelete.title;
+    setCustomTeams(prev => prev.filter(t => t.id !== teamToDelete.id));
+    showNotification(`Squad "${deletedTitle}" deleted`);
+    setTeamToDelete(null);
   };
 
   const handleDeleteTeam = (teamId, e) => {
     if (e) e.stopPropagation();
-    setCustomTeams(prev => prev.filter(t => t.id !== teamId));
-    showNotification('Team removed');
+    const team = customTeams.find(t => t.id === teamId);
+    if (team) {
+      setTeamToDelete(team);
+    } else {
+      setCustomTeams(prev => prev.filter(t => t.id !== teamId));
+      showNotification('Team removed');
+    }
   };
 
   const handleStartTeamChat = (team) => {
@@ -311,12 +594,49 @@ export default function App() {
     setIsSettingsOpen(true);
   };
 
-  // Close modals on Escape key
+  const handleAbortActiveDesktop = async () => {
+    try {
+      await fetch('/api/desktop/abort-active', { method: 'POST' });
+      setIsDesktopRunning(false);
+      setActiveDesktopGoal('');
+      showNotification('⏹️ Vision Engine aborted by user', 'info');
+    } catch (err) {
+      console.error('Failed to abort desktop task:', err);
+    }
+  };
+
+  // Poll for Active Desktop / Vision Engine tasks
+  useEffect(() => {
+    let isMounted = true;
+    const pollActiveDesktop = async () => {
+      try {
+        const res = await fetch('/api/desktop/active-status');
+        const data = await res.json();
+        if (isMounted) {
+          setIsDesktopRunning(!!data?.active);
+          if (data?.job?.goal) setActiveDesktopGoal(data.job.goal);
+          else if (!data?.active) setActiveDesktopGoal('');
+        }
+      } catch (_) {}
+    };
+    const interval = setInterval(pollActiveDesktop, 1500);
+    pollActiveDesktop();
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  // Close modals & Emergency Stop on Escape key
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
+        if (isDesktopRunning) {
+          handleAbortActiveDesktop();
+        }
         setIsSettingsOpen(false);
         setIsCreateTeamOpen(false);
+        setTeamToDelete(null);
         setSelectedMarketAgent(null);
         setSelectedMockupCode(null);
         setIsWorkspaceDropdownOpen(false);
@@ -325,7 +645,7 @@ export default function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [isDesktopRunning]);
 
   // Synchronize Active Theme Preset & Ergonomics across entire Application
   useEffect(() => {
@@ -1174,6 +1494,36 @@ export default function App() {
         </div>
       )}
 
+      {/* Global Floating Vision Engine Control Pill */}
+      {isDesktopRunning && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-2 bg-slate-950/95 border border-cyan-400/60 rounded-full shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-top-4">
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-cyan-500" />
+            </span>
+            <span className="text-xs font-bold text-white tracking-wide">
+              RuXt Live on PC
+            </span>
+            {activeDesktopGoal && (
+              <span className="text-[11px] text-cyan-300/80 max-w-[200px] truncate hidden md:inline">
+                ({activeDesktopGoal})
+              </span>
+            )}
+          </div>
+          <div className="h-4 w-px bg-slate-700/80" />
+          <button
+            onClick={handleAbortActiveDesktop}
+            className="px-3 py-1 bg-red-500/20 hover:bg-red-500/40 text-red-300 border border-red-500/50 rounded-full text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+            title="Emergency Stop: Halt Vision Engine & Screen Control (or press ESC)"
+          >
+            <span>⏹️</span>
+            <span>Stop Vision Engine</span>
+            <kbd className="px-1 text-[10px] bg-red-950/90 rounded border border-red-500/40 font-mono">ESC</kbd>
+          </button>
+        </div>
+      )}
+
       {/* Left Sidebar */}
       <aside className="w-64 border-r backdrop-blur flex flex-col justify-between transition-colors duration-250" style={{ backgroundColor: 'var(--theme-sidebar)', borderColor: 'var(--theme-border)' }}>
         <div className="p-3.5 flex-1 overflow-y-auto space-y-3">
@@ -1519,11 +1869,11 @@ export default function App() {
                               {teamSpecialists.length}
                             </span>
                             <button
-                              onClick={(e) => handleDeleteTeam(team.id, e)}
-                              className="opacity-0 group-hover:opacity-100 p-0.5 text-slate-500 hover:text-rose-400 transition"
+                              onClick={(e) => promptDeleteTeam(team, e)}
+                              className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition"
                               title="Delete squad"
                             >
-                              <X className="w-3 h-3" />
+                              <Trash2 className="w-3 h-3" />
                             </button>
                           </div>
                         </div>
@@ -2240,6 +2590,17 @@ export default function App() {
 
                   {/* Active Brain & New Chat in Chat Header */}
                   <div className="flex items-center gap-2">
+                    {isDesktopRunning && (
+                      <button
+                        onClick={handleAbortActiveDesktop}
+                        className="px-3 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/35 text-red-300 border border-red-500/50 text-[10px] font-bold flex items-center gap-1.5 transition shadow-lg shadow-red-500/20 animate-pulse cursor-pointer"
+                        title="Emergency Stop: Halt Vision Engine & Screen Control (ESC)"
+                      >
+                        <span className="w-2 h-2 rounded-full bg-red-400 animate-ping" />
+                        <span>⏹️ Stop Vision Engine</span>
+                        <kbd className="px-1 py-0.2 bg-red-950/80 rounded border border-red-500/40 text-[9px] font-mono">ESC</kbd>
+                      </button>
+                    )}
                     <button
                       onClick={() => setIsBoardRoomOpen(prev => !prev)}
                       className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold flex items-center gap-1.5 transition shadow-sm ${
@@ -3053,6 +3414,47 @@ export default function App() {
           }}
         >
           <div className="bg-[#0b0f19] border border-slate-800 rounded-3xl shadow-2xl max-w-lg w-full flex flex-col overflow-hidden ring-1 ring-white/10 relative">
+            {/* Mismatch Confirmation Action Dialog Overlay */}
+            {showMismatchConfirmModal && (
+              <div className="absolute inset-0 z-30 bg-black/90 backdrop-blur-md p-6 flex flex-col justify-center items-center text-center animate-in fade-in zoom-in-95 duration-200">
+                <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-3 shadow-lg shadow-amber-500/10">
+                  <AlertCircle className="w-6 h-6" />
+                </div>
+                <h4 className="text-base font-bold text-white mb-1.5">Mismatched Specialists Detected</h4>
+                <p className="text-xs text-slate-300 max-w-sm mb-4 leading-relaxed">
+                  <strong className="text-amber-300 font-semibold">{squadAlignment.mismatched.length} specialist(s)</strong> ({squadAlignment.mismatched.map(m => m.name).join(', ')}) do not align with your mission. What action would you like to take?
+                </p>
+                <div className="flex flex-col gap-2.5 w-full max-w-xs">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const mismatchedSlugs = new Set(squadAlignment.mismatched.map(m => m.slug));
+                      const cleaned = newTeamSelectedAgents.filter(s => !mismatchedSlugs.has(s));
+                      executeCreateTeam(cleaned);
+                    }}
+                    className="w-full px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition shadow-lg shadow-amber-600/30 flex items-center justify-center gap-1.5"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Remove Mismatched & Create
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => executeCreateTeam()}
+                    className="w-full px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition"
+                  >
+                    Keep All & Create Squad
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowMismatchConfirmModal(false)}
+                    className="text-xs text-slate-400 hover:text-white transition py-1"
+                  >
+                    Cancel & Edit Selection
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Header */}
             <div className="px-6 py-5 border-b border-slate-800 bg-[#0d1322]/90 flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -3090,19 +3492,148 @@ export default function App() {
                 />
               </div>
 
-              {/* Description */}
+              {/* Mission / Objective (Mandatory) */}
               <div>
-                <label className="block text-xs font-bold text-slate-200 mb-1.5">
-                  Mission / Objective <span className="text-slate-500 font-normal">(Optional)</span>
-                </label>
-                <input
-                  type="text"
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-bold text-slate-200">
+                    Mission / Objective <span className="text-rose-400">*</span>
+                  </label>
+                  {newTeamDescription.trim().length >= 3 && (
+                    <span className={`text-[10px] font-mono font-medium px-2 py-0.5 rounded-full flex items-center gap-1 transition ${
+                      squadAlignment.mismatched.length > 0
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                        : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                    }`}>
+                      {isAnalyzingSquad ? (
+                        <>
+                          <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                          Checking Alignment...
+                        </>
+                      ) : squadAlignment.mismatched.length > 0 ? (
+                        <>
+                          <AlertCircle className="w-2.5 h-2.5 text-amber-400" />
+                          {squadAlignment.mismatched.length} Mismatch Detected
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400" />
+                          Squad Aligned
+                        </>
+                      )}
+                    </span>
+                  )}
+                </div>
+                <textarea
+                  rows={2}
                   value={newTeamDescription}
                   onChange={(e) => setNewTeamDescription(e.target.value)}
-                  placeholder="e.g. Build, test, and ship production-ready applications."
-                  className="w-full bg-slate-900/90 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition shadow-inner"
+                  placeholder="e.g. Build, test, and ship a high-performance React & Tailwind web application with CI/CD."
+                  className="w-full bg-slate-900/90 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition shadow-inner resize-none"
+                  required
                 />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  A specific mission helps evaluate specialist fit and suggest missing squad talent.
+                </p>
               </div>
+
+              {/* Mismatched Specialists Action Banner */}
+              {squadAlignment.mismatched.length > 0 && (
+                <div className="p-3 rounded-2xl bg-amber-950/30 border border-amber-500/40 space-y-2 animate-in fade-in duration-200">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-amber-300 text-xs font-bold">
+                      <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <span>Mismatched Specialists ({squadAlignment.mismatched.length})</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRemoveAllMismatched}
+                      className="px-2 py-0.5 text-[10px] font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 rounded-lg transition flex items-center gap-1 shadow-sm"
+                    >
+                      <Trash2 className="w-2.5 h-2.5" />
+                      Remove All
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-amber-200/80">
+                    These selected specialists do not match this mission. Would you like to remove them?
+                  </p>
+                  <div className="space-y-1.5 max-h-36 overflow-y-auto pr-0.5">
+                    {squadAlignment.mismatched.map(agent => (
+                      <div key={agent.slug} className="p-2 rounded-xl bg-slate-900/90 border border-amber-500/20 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <img 
+                            src={agent.avatar || '/ruxt-logo.png'} 
+                            alt={agent.name}
+                            className="w-7 h-7 rounded-lg object-cover ring-1 ring-amber-500/30 shrink-0"
+                            onError={(e) => { e.target.src = '/ruxt-logo.png'; }}
+                          />
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold text-white truncate">{agent.name}</div>
+                            <div className="text-[10px] text-amber-300/80 truncate">{agent.reason || agent.role}</div>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveSpecialist(agent.slug)}
+                          className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 border border-rose-500/30 transition shrink-0 flex items-center gap-1"
+                          title="Remove from squad"
+                        >
+                          <X className="w-3 h-3" />
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Recommended Available Specialists Action Banner */}
+              {squadAlignment.recommended.length > 0 && (
+                <div className="p-3 rounded-2xl bg-indigo-950/30 border border-indigo-500/40 space-y-2 animate-in fade-in duration-200">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-indigo-300 text-xs font-bold">
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                      <span>Recommended Additions ({squadAlignment.recommended.length})</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleAddAllRecommended}
+                      className="px-2 py-0.5 text-[10px] font-bold bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition flex items-center gap-1 shadow-sm shadow-indigo-600/30"
+                    >
+                      <UserPlus className="w-2.5 h-2.5" />
+                      Add All
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-indigo-200/80">
+                    Available specialists who directly match this mission. Would you like to add them?
+                  </p>
+                  <div className="space-y-1.5 max-h-36 overflow-y-auto pr-0.5">
+                    {squadAlignment.recommended.map(agent => (
+                      <div key={agent.slug} className="p-2 rounded-xl bg-slate-900/90 border border-indigo-500/20 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <img 
+                            src={agent.avatar || '/ruxt-logo.png'} 
+                            alt={agent.name}
+                            className="w-7 h-7 rounded-lg object-cover ring-1 ring-indigo-500/30 shrink-0"
+                            onError={(e) => { e.target.src = '/ruxt-logo.png'; }}
+                          />
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold text-white truncate">{agent.name}</div>
+                            <div className="text-[10px] text-indigo-300/80 truncate">{agent.reason || agent.role}</div>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleAddSpecialist(agent.slug)}
+                          className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition shrink-0 flex items-center gap-1 shadow-sm shadow-indigo-600/30"
+                        >
+                          <Plus className="w-3 h-3" />
+                          Add to Team
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Agent Selection */}
               <div>
@@ -3118,13 +3649,18 @@ export default function App() {
                 <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
                   {specialistAgents.map((agent) => {
                     const isSelected = newTeamSelectedAgents.includes(agent.slug);
+                    const isMismatched = squadAlignment.mismatched.some(m => m.slug === agent.slug);
+                    const isRecommended = squadAlignment.recommended.some(r => r.slug === agent.slug);
+
                     return (
                       <div
                         key={agent.slug}
                         onClick={() => toggleAgentInTeam(agent.slug)}
                         className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition ${
                           isSelected
-                            ? 'bg-indigo-950/40 border-indigo-500/60 shadow-sm'
+                            ? isMismatched
+                              ? 'bg-amber-950/30 border-amber-500/60 shadow-sm'
+                              : 'bg-indigo-950/40 border-indigo-500/60 shadow-sm'
                             : 'bg-slate-900/60 border-slate-800/80 hover:bg-slate-800/50 hover:border-slate-700'
                         }`}
                       >
@@ -3136,8 +3672,18 @@ export default function App() {
                             onError={(e) => { e.target.src = '/ruxt-logo.png'; }}
                           />
                           <div className="min-w-0">
-                            <div className="font-bold text-xs text-white">
-                              {agent.name}
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-bold text-xs text-white truncate">{agent.name}</span>
+                              {isSelected && isMismatched && (
+                                <span className="px-1.5 py-0.2 text-[9px] font-bold rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                                  Mismatch
+                                </span>
+                              )}
+                              {!isSelected && isRecommended && (
+                                <span className="px-1.5 py-0.2 text-[9px] font-bold rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">
+                                  Recommended
+                                </span>
+                              )}
                             </div>
                             <div className="text-[10px] text-slate-400 truncate">{agent.role}</div>
                           </div>
@@ -3145,7 +3691,9 @@ export default function App() {
 
                         <div className={`w-5 h-5 rounded-lg flex items-center justify-center border transition shrink-0 ${
                           isSelected
-                            ? 'bg-indigo-600 border-indigo-500 text-white'
+                            ? isMismatched
+                              ? 'bg-amber-600 border-amber-500 text-white'
+                              : 'bg-indigo-600 border-indigo-500 text-white'
                             : 'border-slate-700 bg-slate-950'
                         }`}>
                           {isSelected && <Check className="w-3.5 h-3.5" />}
@@ -3167,7 +3715,7 @@ export default function App() {
                 </button>
                 <button
                   type="submit"
-                  disabled={!newTeamTitle.trim() || newTeamSelectedAgents.length === 0}
+                  disabled={!newTeamTitle.trim() || !newTeamDescription.trim() || newTeamSelectedAgents.length === 0}
                   className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold transition shadow-lg shadow-indigo-600/30 flex items-center gap-2"
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -3175,6 +3723,57 @@ export default function App() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Squad Confirmation Modal Popup */}
+      {teamToDelete && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setTeamToDelete(null);
+          }}
+        >
+          <div className="bg-[#0b0f19] border border-slate-800 rounded-3xl shadow-2xl max-w-sm w-full p-6 flex flex-col items-center text-center relative ring-1 ring-white/10 animate-in zoom-in-95 duration-150">
+            {/* Close icon button */}
+            <button
+              onClick={() => setTeamToDelete(null)}
+              className="absolute top-4 right-4 w-7 h-7 rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white transition"
+              title="Close"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+
+            <div className="w-12 h-12 rounded-2xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center text-rose-400 mb-3.5 shadow-lg shadow-rose-500/10">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            
+            <h3 className="text-base font-bold text-white mb-1.5">Delete Squad?</h3>
+            <p className="text-xs text-slate-300 mb-2 leading-relaxed">
+              Are you sure you want to remove squad <strong className="text-white font-semibold">"{teamToDelete.title}"</strong>?
+            </p>
+            <p className="text-[11px] text-slate-400 mb-5">
+              This squad has {(teamToDelete.agentSlugs || []).filter(s => s !== 'ruxt').length} assigned specialist(s). This action cannot be undone.
+            </p>
+
+            <div className="flex items-center gap-2.5 w-full">
+              <button
+                type="button"
+                onClick={() => setTeamToDelete(null)}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-semibold transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteTeam}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition shadow-lg shadow-rose-600/30 flex items-center justify-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Delete Squad
+              </button>
+            </div>
           </div>
         </div>
       )}

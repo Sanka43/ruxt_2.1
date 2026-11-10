@@ -189,6 +189,7 @@ export async function callAntigravityHost({
   systemPrompt,
   userMessage,
   history = [],
+  images = [],
   customBinaryPath = null,
   conversationTitle = null,
   stealthHostMode = false,
@@ -239,6 +240,7 @@ export async function callAntigravityHost({
           promptText: userMessage,
           systemPrompt,
           history,
+          images,
           model: normModel,
           customBinaryPath,
           cwd: bridgeCwd
@@ -353,6 +355,7 @@ export async function generateAIResponse({
   systemPrompt,
   userMessage,
   history = [],
+  images = [],
   settings = {},
   conversationTitle = null,
   agentSlug = 'ruxt',
@@ -381,6 +384,7 @@ export async function generateAIResponse({
           systemPrompt,
           userMessage,
           history,
+          images,
           customBinaryPath: settings.antigravity_custom_path,
           conversationTitle: conversationTitle || settings.conversation_title,
           stealthHostMode: settings.stealth_host_mode === 'true',
@@ -395,7 +399,8 @@ export async function generateAIResponse({
             model: model || settings.gemini_model || 'gemini-2.0-flash',
             systemPrompt,
             userMessage,
-            history
+            history,
+            images
           });
         }
         // If no cloud Gemini API key is configured and Antigravity is not paused, use Antigravity
@@ -419,7 +424,8 @@ export async function generateAIResponse({
           model: model || settings.claude_model || 'claude-3-7-sonnet-20250219',
           systemPrompt,
           userMessage,
-          history
+          history,
+          images
         });
 
       case 'openai':
@@ -429,7 +435,8 @@ export async function generateAIResponse({
           model: model || settings.openai_model || 'gpt-4o-mini',
           systemPrompt,
           userMessage,
-          history
+          history,
+          images
         });
 
       case 'ollama':
@@ -487,6 +494,7 @@ export async function generateAIResponse({
         systemPrompt,
         userMessage,
         history,
+        images,
         stealthHostMode: settings.stealth_host_mode !== 'false'
       });
       if (agyRes) return agyRes;
@@ -520,10 +528,23 @@ export async function generateAIResponse({
 }
 
 // 1. Google Gemini / Antigravity Bridge
-async function callGemini({ apiKey, model, systemPrompt, userMessage, history }) {
+async function callGemini({ apiKey, model, systemPrompt, userMessage, history, images = [] }) {
   // If API key is provided and valid, call Cloud API directly
   if (apiKey && apiKey.trim().length > 15) {
     try {
+      const userParts = [{ text: userMessage }];
+      if (images && images.length > 0) {
+        for (const img of images) {
+          const rawBase64 = img.replace(/^data:image\/[a-z]+;base64,/, '');
+          userParts.push({
+            inlineData: {
+              mimeType: 'image/jpeg',
+              data: rawBase64
+            }
+          });
+        }
+      }
+
       const geminiContents = [
         ...history.map(m => ({
           role: m.role === 'user' ? 'user' : 'model',
@@ -531,7 +552,7 @@ async function callGemini({ apiKey, model, systemPrompt, userMessage, history })
         })),
         {
           role: 'user',
-          parts: [{ text: userMessage }]
+          parts: userParts
         }
       ];
 
@@ -572,15 +593,31 @@ async function callGemini({ apiKey, model, systemPrompt, userMessage, history })
 }
 
 // 2. Anthropic Claude (API or Claude CLI fallback)
-async function callClaude({ apiKey, model, systemPrompt, userMessage, history }) {
+async function callClaude({ apiKey, model, systemPrompt, userMessage, history, images = [] }) {
   // If API key is provided, use Anthropic Messages API
   if (apiKey && apiKey.trim().length > 5) {
+    let userContent = userMessage;
+    if (images && images.length > 0) {
+      userContent = [];
+      for (const img of images) {
+        userContent.push({
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: 'image/jpeg',
+            data: img.replace(/^data:image\/[a-z]+;base64,/, '')
+          }
+        });
+      }
+      userContent.push({ type: 'text', text: userMessage });
+    }
+
     const messages = [
       ...history.map(m => ({
         role: m.role === 'user' ? 'user' : 'assistant',
         content: m.content
       })),
-      { role: 'user', content: userMessage }
+      { role: 'user', content: userContent }
     ];
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -633,15 +670,27 @@ async function callClaude({ apiKey, model, systemPrompt, userMessage, history })
 }
 
 // 3. OpenAI / Codex Bridge
-async function callOpenAI({ apiKey, model, systemPrompt, userMessage, history }) {
+async function callOpenAI({ apiKey, model, systemPrompt, userMessage, history, images = [] }) {
   if (!apiKey || apiKey.trim().length < 5) {
     throw new Error('OpenAI / Codex API Key is missing or invalid.');
+  }
+
+  let userContent = userMessage;
+  if (images && images.length > 0) {
+    userContent = [{ type: 'text', text: userMessage }];
+    for (const img of images) {
+      const b64 = img.startsWith('data:') ? img : `data:image/jpeg;base64,${img}`;
+      userContent.push({
+        type: 'image_url',
+        image_url: { url: b64 }
+      });
+    }
   }
 
   const messages = [
     { role: 'system', content: systemPrompt },
     ...history.map(m => ({ role: m.role, content: m.content })),
-    { role: 'user', content: userMessage }
+    { role: 'user', content: userContent }
   ];
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {

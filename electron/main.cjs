@@ -1,7 +1,8 @@
-const { app, BrowserWindow, ipcMain, shell, Menu, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Menu, screen, globalShortcut } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const http = require('http');
+const fs = require('fs');
 
 let mainWindow = null;
 let overlayWindow = null;
@@ -14,15 +15,13 @@ function createOrGetOverlayWindow() {
   }
 
   const primaryDisplay = screen.getPrimaryDisplay();
-  const { width } = primaryDisplay.workAreaSize;
-  const overlayWidth = 660;
-  const overlayHeight = 72;
+  const { x, y, width, height } = primaryDisplay.bounds;
 
   overlayWindow = new BrowserWindow({
-    width: overlayWidth,
-    height: overlayHeight,
-    x: Math.round((width - overlayWidth) / 2),
-    y: 18,
+    x,
+    y,
+    width,
+    height,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -39,6 +38,7 @@ function createOrGetOverlayWindow() {
   });
 
   overlayWindow.setAlwaysOnTop(true, 'screen-saver');
+  overlayWindow.setIgnoreMouseEvents(true, { forward: true });
   overlayWindow.loadFile(path.join(__dirname, '../public/overlay.html'));
 
   overlayWindow.on('closed', () => {
@@ -70,6 +70,16 @@ function startBackendServer() {
     const serverScript = path.join(__dirname, '../server/index.js');
     const userDataDir = isDev ? path.join(__dirname, '../data') : path.join(app.getPath('userData'), 'data');
 
+    let stdioConfig = 'inherit';
+    let logStream = null;
+    try {
+      const logDir = app.getPath('userData');
+      if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+      const logFile = path.join(logDir, 'server.log');
+      logStream = fs.createWriteStream(logFile, { flags: 'a' });
+      stdioConfig = ['ignore', 'pipe', 'pipe'];
+    } catch (_) {}
+
     serverProcess = spawn(process.execPath, [serverScript], {
       env: { 
         ...process.env, 
@@ -77,11 +87,26 @@ function startBackendServer() {
         RUXT_DATA_DIR: userDataDir,
         ELECTRON_RUN_AS_NODE: '1'
       },
-      stdio: 'inherit'
+      stdio: stdioConfig
+    });
+
+    if (logStream && serverProcess.stdout && serverProcess.stderr) {
+      serverProcess.stdout.pipe(logStream);
+      serverProcess.stderr.pipe(logStream);
+    }
+
+    serverProcess.on('exit', (code, signal) => {
+      console.warn(`[RuXt Desktop] Backend server process exited with code ${code}, signal ${signal}`);
+      if (logStream) {
+        try { logStream.write(`\n[RuXt Desktop] Backend server process exited with code ${code}, signal ${signal}\n`); } catch (_) {}
+      }
     });
 
     serverProcess.on('error', (err) => {
       console.error('Failed to start RuXt background engine:', err);
+      if (logStream) {
+        try { logStream.write(`\n[RuXt Desktop] Failed to start engine: ${err.message}\n`); } catch (_) {}
+      }
     });
   });
 }
@@ -117,14 +142,32 @@ function createWindow() {
   // Desktop Overlay HUD Handlers
   ipcMain.on('desktop-overlay-show', (_event, data) => {
     try {
+      if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isMinimized()) {
+        mainWindow.minimize();
+      }
       const win = createOrGetOverlayWindow();
       if (win) {
+        win.setIgnoreMouseEvents(true, { forward: true });
         win.show();
         win.webContents.send('banner-update-data', data);
       }
+      try {
+        globalShortcut.unregister('Escape');
+        globalShortcut.register('Escape', () => {
+          ipcMain.emit('desktop-overlay-abort');
+        });
+      } catch (_) {}
     } catch (err) {
       console.error('Failed to show overlay window:', err);
     }
+  });
+
+  ipcMain.on('desktop-overlay-set-ignore-mouse', (_event, ignore, options) => {
+    try {
+      if (overlayWindow && !overlayWindow.isDestroyed()) {
+        overlayWindow.setIgnoreMouseEvents(ignore, options || { forward: true });
+      }
+    } catch (_) {}
   });
 
   ipcMain.on('desktop-overlay-update', (_event, data) => {
@@ -139,8 +182,13 @@ function createWindow() {
 
   ipcMain.on('desktop-overlay-hide', () => {
     try {
+      try { globalShortcut.unregister('Escape'); } catch (_) {}
       if (overlayWindow && !overlayWindow.isDestroyed()) {
         overlayWindow.hide();
+      }
+      if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isMinimized()) {
+        mainWindow.restore();
+        mainWindow.focus();
       }
     } catch (err) {
       console.error('Failed to hide overlay window:', err);
@@ -149,6 +197,7 @@ function createWindow() {
 
   ipcMain.on('desktop-overlay-abort', () => {
     try {
+      try { globalShortcut.unregister('Escape'); } catch (_) {}
       mainWindow?.webContents.send('desktop-task-aborted');
       if (overlayWindow && !overlayWindow.isDestroyed()) {
         overlayWindow.webContents.send('banner-update-data', {
@@ -158,7 +207,11 @@ function createWindow() {
         });
         setTimeout(() => {
           if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.hide();
-        }, 1200);
+          if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isMinimized()) {
+            mainWindow.restore();
+            mainWindow.focus();
+          }
+        }, 800);
       }
     } catch (err) {
       console.error('Failed to abort desktop task:', err);
@@ -173,15 +226,20 @@ function createWindow() {
 
   const targetURL = isDev ? 'http://localhost:5173' : 'http://127.0.0.1:1234';
 
-  const loadWithRetry = (retries = 20, delay = 500) => {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
-    mainWindow.loadURL(targetURL).catch((err) => {
-      if (retries > 0) {
-        setTimeout(() => loadWithRetry(retries - 1, delay), delay);
-      } else {
-        console.error('Failed to load application URL:', err);
-      }
-    });
+  let hasLoaded = false;
+  const loadWithRetry = (retries = 40, delay = 500) => {
+    if (!mainWindow || mainWindow.isDestroyed() || hasLoaded) return;
+    mainWindow.loadURL(targetURL)
+      .then(() => {
+        hasLoaded = true;
+      })
+      .catch((err) => {
+        if (retries > 0 && !hasLoaded) {
+          setTimeout(() => loadWithRetry(retries - 1, delay), delay);
+        } else if (!hasLoaded) {
+          console.error('Failed to load application URL after retries:', err);
+        }
+      });
   };
 
   loadWithRetry();
@@ -191,10 +249,11 @@ function createWindow() {
   }
 
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    if (errorCode === -3) return; // Skip ERR_ABORTED when navigation is superseded
     if (validatedURL && (validatedURL.includes('1234') || validatedURL.includes('5173'))) {
       setTimeout(() => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.loadURL(targetURL);
+        if (mainWindow && !mainWindow.isDestroyed() && !hasLoaded) {
+          mainWindow.loadURL(targetURL).then(() => { hasLoaded = true; }).catch(() => {});
         }
       }, 1000);
     }

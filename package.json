@@ -8,6 +8,7 @@
     "dev": "concurrently \"cross-env ELECTRON_RUN_AS_NODE=1 electron server/index.js\" \"vite\"",
     "build": "vite build",
     "server": "cross-env ELECTRON_RUN_AS_NODE=1 electron server/index.js",
+    "test:computer-use": "cross-env ELECTRON_RUN_AS_NODE=1 electron server/tests/computerUse.test.js",
     "electron:dev": "concurrently \"cross-env ELECTRON_RUN_AS_NODE=1 electron server/index.js\" \"vite\" \"cross-env NODE_ENV=development electron .\"",
     "start": "cross-env ELECTRON_RUN_AS_NODE=1 electron server/index.js",
     "package": "npm run build && electron-builder --win --dir",
@@ -30,6 +31,9 @@
       "server/**/*",
       "agents/**/*",
       "package.json"
+    ],
+    "asarUnpack": [
+      "**/server/services/*.ps1"
     ],
     "win": {
       "target": [

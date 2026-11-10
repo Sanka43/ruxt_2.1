@@ -24,6 +24,9 @@ export default function DesktopLiveOperatorCard({ desktopAction }) {
   const [status, setStatus] = useState('running');
   const [copied, setCopied] = useState(false);
   const [showScriptModal, setShowScriptModal] = useState(false);
+  const [visionSnapshot, setVisionSnapshot] = useState(null);
+  const [targetCoord, setTargetCoord] = useState(null);
+  const [aiThought, setAiThought] = useState('');
   const logEndRef = useRef(null);
   const canvasRef = useRef(null);
 
@@ -58,6 +61,13 @@ export default function DesktopLiveOperatorCard({ desktopAction }) {
 
         if (data.type === 'log') {
           setLogs(prev => [...prev.slice(-80), data.text]);
+          if (data.text?.includes('[Vision Observation]')) {
+            setAiThought(data.text.replace('[Vision Observation]', '').trim());
+          }
+        } else if (data.type === 'vision_snapshot') {
+          if (data.image) setVisionSnapshot(data.image);
+        } else if (data.type === 'target_coordinate') {
+          setTargetCoord({ x: data.x, y: data.y });
         } else if (data.type === 'step_start') {
           setCurrentStepIndex(data.stepIndex);
           setProgress(data.progress || Math.round(((data.stepIndex + 1) / steps.length) * 100));
@@ -375,16 +385,67 @@ export default function DesktopLiveOperatorCard({ desktopAction }) {
           </div>
         </div>
 
-        {/* Right Column: Interactive 3D Canvas / Document Preview & Live Console Stream */}
+        {/* Right Column: Live Vision Screen Viewport or Document / Turntable Preview */}
         <div className="md:col-span-7 flex flex-col gap-3">
-          {jobState?.appSlug === 'notepad' || jobState?.previewType === 'text' ? (
+          {visionSnapshot || jobState?.previewType === 'vision_stream' ? (
+            /* Real-time Vision Screen Monitor Viewport */
+            <div className="relative rounded-xl bg-slate-950 border border-cyan-500/35 p-3 flex flex-col overflow-hidden shadow-lg shadow-cyan-950/20">
+              <div className="flex items-center justify-between text-slate-400 mb-2 border-b border-slate-800/80 pb-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_8px_#38bdf8]" />
+                  <span className="text-[11px] font-bold text-white tracking-wide flex items-center gap-1.5">
+                    <Eye className="w-3.5 h-3.5 text-cyan-400" />
+                    Live Computer Vision Screen Monitor
+                  </span>
+                </div>
+                <span className="text-[10px] text-cyan-300 font-semibold bg-cyan-500/15 px-2 py-0.5 rounded border border-cyan-500/30">
+                  Real-time Display Feed
+                </span>
+              </div>
+
+              {visionSnapshot ? (
+                <div className="relative w-full aspect-video rounded-lg overflow-hidden border border-slate-800 bg-black flex items-center justify-center">
+                  <img 
+                    src={visionSnapshot} 
+                    alt="Active Desktop Screen" 
+                    className="w-full h-full object-contain"
+                  />
+                  {targetCoord && (
+                    <div 
+                      className="absolute w-8 h-8 -ml-4 -mt-4 rounded-full border-2 border-rose-500 bg-rose-500/20 animate-ping flex items-center justify-center pointer-events-none"
+                      style={{
+                        left: `${Math.min(95, Math.max(5, (targetCoord.x / 1536) * 100))}%`,
+                        top: `${Math.min(95, Math.max(5, (targetCoord.y / 864) * 100))}%`
+                      }}
+                    >
+                      <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="w-full aspect-video rounded-lg border border-dashed border-slate-800 bg-slate-900/40 flex flex-col items-center justify-center gap-2 text-slate-500 text-xs">
+                  <Loader2 className="w-5 h-5 text-cyan-400 animate-spin" />
+                  <span>Capturing real-time screen display for AI Vision...</span>
+                </div>
+              )}
+
+              {aiThought && (
+                <div className="mt-2 text-[11px] bg-cyan-950/40 border border-cyan-800/50 rounded-lg p-2 text-cyan-200 flex items-start gap-1.5">
+                  <span className="text-sm">🧠</span>
+                  <div>
+                    <strong className="text-cyan-400">AI Vision Reasoning:</strong> {aiThought}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : jobState?.appSlug === 'notepad' || jobState?.previewType === 'text' ? (
             /* Live Notepad Document Preview */
             <div className="rounded-xl bg-slate-950 border border-slate-800 p-3 flex flex-col font-mono text-xs shadow-inner">
               <div className="flex items-center justify-between text-slate-400 mb-2 border-b border-slate-800/80 pb-1.5">
                 <div className="flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
                   <span className="text-[11px] font-bold text-white tracking-wide">
-                    📄 Notepad Document ({jobState?.scriptFilename || 'today_tasks.txt'})
+                    📄 Document Content ({jobState?.scriptFilename || 'document.txt'})
                   </span>
                 </div>
                 <span className="text-[10px] text-emerald-300 font-semibold bg-emerald-500/15 px-2 py-0.5 rounded border border-emerald-500/30">
@@ -397,12 +458,12 @@ export default function DesktopLiveOperatorCard({ desktopAction }) {
               </div>
 
               <div className="w-full flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/80 mt-2 pt-1.5">
-                <span>App: <strong className="text-white">Windows Notepad (notepad.exe)</strong></span>
+                <span>App: <strong className="text-white">{jobState?.appName || 'Text Editor'}</strong></span>
                 <button 
                   onClick={handleLaunchApp}
                   className="text-cyan-400 hover:text-cyan-300 font-bold flex items-center gap-1 transition"
                 >
-                  Open Notepad <ExternalLink className="w-3 h-3" />
+                  Open App <ExternalLink className="w-3 h-3" />
                 </button>
               </div>
             </div>

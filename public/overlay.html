@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>RuXt on Work HUD</title>
+  <title>RuXt Desktop Control HUD</title>
   <style>
     * {
       box-sizing: border-box;
@@ -11,46 +11,113 @@
       padding: 0;
       user-select: none;
       -webkit-user-select: none;
-      -webkit-app-region: drag;
     }
 
-    body {
+    html, body {
       width: 100vw;
       height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      overflow: hidden;
       background: transparent;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-      overflow: hidden;
     }
 
+    /* Full-Screen Glowing Gradient Border */
+    .screen-gradient-border {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      box-sizing: border-box;
+      border: 5px solid transparent;
+      border-image: linear-gradient(135deg, #06b6d4, #8b5cf6, #ec4899, #10b981, #06b6d4) 1;
+      box-shadow: 
+        inset 0 0 24px rgba(6, 182, 212, 0.55),
+        inset 0 0 50px rgba(139, 92, 246, 0.3),
+        inset 0 0 90px rgba(16, 185, 129, 0.2);
+      animation: gradientPulse 3.5s ease-in-out infinite alternate;
+      z-index: 100;
+    }
+
+    @keyframes gradientPulse {
+      0% {
+        box-shadow: 
+          inset 0 0 20px rgba(6, 182, 212, 0.45),
+          inset 0 0 40px rgba(139, 92, 246, 0.2),
+          inset 0 0 70px rgba(16, 185, 129, 0.15);
+        opacity: 0.88;
+      }
+      100% {
+        box-shadow: 
+          inset 0 0 35px rgba(6, 182, 212, 0.75),
+          inset 0 0 65px rgba(139, 92, 246, 0.45),
+          inset 0 0 110px rgba(16, 185, 129, 0.3);
+        opacity: 1;
+      }
+    }
+
+    /* Ambient Corner Badges */
+    .corner-badge-tl {
+      position: fixed;
+      top: 14px;
+      left: 18px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 4px 10px;
+      background: rgba(11, 15, 25, 0.85);
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      border-radius: 6px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      color: #38bdf8;
+      text-transform: uppercase;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(8px);
+      pointer-events: none;
+      z-index: 101;
+    }
+
+    .corner-badge-tl .live-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 8px #10b981;
+      animation: pulse 1.2s infinite ease-in-out;
+    }
+
+    /* Floating Top HUD Banner */
     .hud-banner {
-      width: 620px;
+      position: fixed;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 660px;
       height: 56px;
-      background: rgba(11, 15, 25, 0.92);
-      border: 1px solid rgba(56, 189, 248, 0.35);
+      background: rgba(11, 15, 25, 0.94);
+      border: 1px solid rgba(56, 189, 248, 0.4);
       border-radius: 28px;
-      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.7), 0 0 24px rgba(56, 189, 248, 0.25);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.75), 0 0 28px rgba(56, 189, 248, 0.3);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
       display: flex;
       align-items: center;
       justify-content: space-between;
       padding: 0 16px 0 18px;
-      position: relative;
       overflow: hidden;
       color: #f8fafc;
+      z-index: 1000;
+      pointer-events: auto;
+      cursor: default;
     }
 
-    /* Ambient animated neon line */
     .glow-line {
       position: absolute;
       top: 0;
       left: 0;
       right: 0;
       height: 2px;
-      background: linear-gradient(90deg, transparent, #38bdf8, #10b981, transparent);
+      background: linear-gradient(90deg, transparent, #38bdf8, #8b5cf6, #10b981, transparent);
       animation: sweep 2.5s ease-in-out infinite;
     }
 
@@ -71,8 +138,8 @@
       display: flex;
       align-items: center;
       gap: 6px;
-      background: rgba(56, 189, 248, 0.15);
-      border: 1px solid rgba(56, 189, 248, 0.4);
+      background: rgba(56, 189, 248, 0.16);
+      border: 1px solid rgba(56, 189, 248, 0.45);
       padding: 4px 10px;
       border-radius: 9999px;
       font-size: 11px;
@@ -80,7 +147,7 @@
       letter-spacing: 0.5px;
       color: #38bdf8;
       text-transform: uppercase;
-      shrink: 0;
+      flex-shrink: 0;
     }
 
     .pulse-dot {
@@ -94,7 +161,7 @@
 
     @keyframes pulse {
       0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.4; transform: scale(0.85); }
+      50% { opacity: 0.35; transform: scale(0.85); }
     }
 
     .task-details {
@@ -139,10 +206,9 @@
     .right-section {
       display: flex;
       align-items: center;
-      gap: 10px;
-      shrink: 0;
+      gap: 12px;
+      flex-shrink: 0;
       margin-left: 12px;
-      -webkit-app-region: no-drag;
     }
 
     .progress-text {
@@ -152,9 +218,18 @@
       font-variant-numeric: tabular-nums;
     }
 
+    .esc-hint {
+      font-size: 10px;
+      color: #64748b;
+      font-weight: 600;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+      padding: 1px 4px;
+    }
+
     .abort-btn {
-      background: rgba(239, 68, 68, 0.15);
-      border: 1px solid rgba(239, 68, 68, 0.4);
+      background: rgba(239, 68, 68, 0.18);
+      border: 1px solid rgba(239, 68, 68, 0.45);
       color: #fca5a5;
       font-size: 11px;
       font-weight: 700;
@@ -169,10 +244,10 @@
     }
 
     .abort-btn:hover {
-      background: rgba(239, 68, 68, 0.35);
-      border-color: rgba(239, 68, 68, 0.7);
+      background: rgba(239, 68, 68, 0.4);
+      border-color: rgba(239, 68, 68, 0.8);
       color: #ffffff;
-      box-shadow: 0 0 12px rgba(239, 68, 68, 0.4);
+      box-shadow: 0 0 12px rgba(239, 68, 68, 0.5);
       transform: scale(1.02);
     }
 
@@ -187,7 +262,7 @@
 
     .progress-bar-fill {
       height: 100%;
-      background: linear-gradient(90deg, #38bdf8, #10b981);
+      background: linear-gradient(90deg, #38bdf8, #8b5cf6, #10b981);
       width: 0%;
       transition: width 0.3s ease;
       box-shadow: 0 0 8px #38bdf8;
@@ -195,7 +270,17 @@
   </style>
 </head>
 <body>
-  <div class="hud-banner">
+  <!-- Full Screen Perimeter Gradient Border -->
+  <div class="screen-gradient-border"></div>
+
+  <!-- Top-left indicator badge -->
+  <div class="corner-badge-tl">
+    <span class="live-dot"></span>
+    <span>RuXt Desktop Active</span>
+  </div>
+
+  <!-- Floating HUD Banner -->
+  <div class="hud-banner" id="hudBanner">
     <div class="glow-line"></div>
 
     <div class="left-section">
@@ -205,17 +290,18 @@
       </div>
 
       <div class="task-details">
-        <div class="task-title" id="hudTaskTitle">Initializing Desktop Operator...</div>
+        <div class="task-title" id="hudTaskTitle">Autonomous Desktop Operator Active</div>
         <div class="task-step">
           <span class="action-icon" id="hudActionIcon">⚡</span>
-          <span id="hudStepText">Analyzing requirements and establishing session...</span>
+          <span id="hudStepText">Connecting to PC desktop session...</span>
         </div>
       </div>
     </div>
 
     <div class="right-section">
       <span class="progress-text" id="hudProgressText">0%</span>
-      <button class="abort-btn" id="hudAbortBtn" title="Immediately stop the running operation">
+      <span class="esc-hint" title="Press Esc to stop">ESC</span>
+      <button class="abort-btn" id="hudAbortBtn" title="Stop live execution (Esc)">
         <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
           <rect x="4" y="4" width="16" height="16" rx="2" />
         </svg>
@@ -229,12 +315,41 @@
   </div>
 
   <script>
+    const bannerEl = document.getElementById('hudBanner');
     const titleEl = document.getElementById('hudTaskTitle');
     const stepEl = document.getElementById('hudStepText');
     const iconEl = document.getElementById('hudActionIcon');
     const progressTextEl = document.getElementById('hudProgressText');
     const progressBarEl = document.getElementById('hudProgressBar');
     const abortBtn = document.getElementById('hudAbortBtn');
+
+    // Handle mouse events toggle so clicks pass through to Notepad except when hovering banner
+    if (bannerEl && window.ruxtDesktop && window.ruxtDesktop.setIgnoreMouseEvents) {
+      bannerEl.addEventListener('mouseenter', () => {
+        window.ruxtDesktop.setIgnoreMouseEvents(false);
+      });
+      bannerEl.addEventListener('mouseleave', () => {
+        window.ruxtDesktop.setIgnoreMouseEvents(true, { forward: true });
+      });
+    }
+
+    // Handle Esc key to abort
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        triggerAbort();
+      }
+    });
+
+    function triggerAbort() {
+      if (window.ruxtDesktop && window.ruxtDesktop.abortTask) {
+        window.ruxtDesktop.abortTask();
+      }
+      stepEl.textContent = 'Stopping operation...';
+      abortBtn.style.opacity = '0.5';
+      abortBtn.disabled = true;
+    }
+
+    abortBtn.addEventListener('click', triggerAbort);
 
     // Handle updates from Electron main process
     if (window.ruxtDesktop && window.ruxtDesktop.onBannerUpdate) {
@@ -250,15 +365,6 @@
         }
       });
     }
-
-    abortBtn.addEventListener('click', () => {
-      if (window.ruxtDesktop && window.ruxtDesktop.abortTask) {
-        window.ruxtDesktop.abortTask();
-      }
-      stepEl.textContent = 'Stopping operation...';
-      abortBtn.style.opacity = '0.5';
-      abortBtn.disabled = true;
-    });
   </script>
 </body>
 </html>

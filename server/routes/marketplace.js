@@ -9,11 +9,13 @@ import { invalidateAgentsCache } from './agents.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const appRootDir = path.resolve(__dirname, '../..');
+const isPackaged = __dirname.includes('app.asar');
+const writableDataDir = process.env.RUXT_DATA_DIR || (process.env.APPDATA ? path.join(process.env.APPDATA, 'RuXt', 'data') : path.resolve(appRootDir, 'data'));
 
 const router = Router();
-const agentsDir = process.env.RUXT_AGENTS_DIR || path.resolve(appRootDir, 'agents');
+const agentsDir = process.env.RUXT_AGENTS_DIR || (isPackaged ? path.join(writableDataDir, 'agents') : path.resolve(appRootDir, 'agents'));
 const packagesDir = path.join(agentsDir, 'packages');
-const avatarsDir = path.resolve(appRootDir, 'public', 'agent-avatars');
+const avatarsDir = isPackaged ? path.join(writableDataDir, 'agent-avatars') : path.resolve(appRootDir, 'public', 'agent-avatars');
 
 function isValidSlug(slug) {
   return typeof slug === 'string' && /^[a-z0-9_-]+$/i.test(slug) && slug !== 'packages' && !slug.includes('..');

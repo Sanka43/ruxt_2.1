@@ -8,8 +8,8 @@ import { generateAIResponse } from './aiProvider.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const appRootDir = path.resolve(__dirname, '../..');
-const runsDir = path.join(appRootDir, 'data', 'desktop_runs');
+const dataDir = process.env.RUXT_DATA_DIR || (process.env.APPDATA ? path.join(process.env.APPDATA, 'RuXt', 'data') : path.resolve(__dirname, '../../data'));
+const runsDir = path.join(dataDir, 'desktop_runs');
 
 if (!fs.existsSync(runsDir)) {
   fs.mkdirSync(runsDir, { recursive: true });
@@ -218,7 +218,11 @@ Dynamically analyze the user's specific request.
    - Sets render output parameters (HD 1920x1080, Cycles/Eevee).
    - Saves the final blend file to the specified output path.
 2. If the app is another desktop app (Notepad, VS Code, Browser, etc.):
-   Generate the appropriate automation script (PowerShell / Node.js / Python / Content payload).
+   - If the user wants a story (e.g. "story ekak liyanna", "write a story", "katha ekak"):
+     Generate a complete, engaging, creative story with a title and paragraphs (in Sinhala if requested in Sinhala/Singlish, or English if in English) as the "scriptCode". Set "taskTitle" to "Creative Story Writing (Notepad)". Set "steps" with step 4 as "Typing story live into Notepad with human cadence...".
+   - If the user wants code, notes, or other content:
+     Generate the exact requested document or code as the "scriptCode".
+   - DO NOT generate a daily timetable or schedule unless the user specifically asked for a timetable or schedule.
 
 OUTPUT STRICT JSON ONLY in the following schema:
 {
@@ -288,23 +292,120 @@ OUTPUT STRICT JSON ONLY in the following schema:
     const is3D = !isNotepad && (targetApp.includes('blender') || targetApp.includes('3d'));
 
     if (isNotepad) {
+      const isStory = Boolean(userMessage && userMessage.toLowerCase().match(/story|katha|kathawak|kathawa|tale|fable|liyanna/));
+      const isCode = Boolean(userMessage && userMessage.toLowerCase().match(/code|program|script|python|javascript|html/));
       const notepadContent = generateDynamicNotepadContent(userMessage);
+      const title = isStory 
+        ? 'Creative Story Writing (Notepad)' 
+        : (isCode ? 'Source Code Drafting (Notepad)' : 'Document Synthesis (Notepad)');
+
       return {
         success: true,
-        taskTitle: 'Daily Tasks Schedule (Notepad)',
+        taskTitle: title,
         appInfo,
         description: `Autonomous document drafting and live typing in Notepad for: "${userMessage}".`,
         steps: [
           { id: 1, description: 'Locating and launching Notepad on Windows PC...' },
           { id: 2, description: 'Bringing Notepad window to active foreground...' },
           { id: 3, description: 'Moving cursor smoothly into Notepad document area...' },
-          { id: 4, description: "Typing task list live into Notepad with human cadence..." },
-          { id: 5, description: 'Saving tasks deliverable to workspace...' }
+          { id: 4, description: isStory ? 'Typing story live into Notepad with human cadence...' : 'Typing document content live into Notepad with human cadence...' },
+          { id: 5, description: 'Finalizing document in Notepad...' }
         ],
-        scriptFilename: 'today_tasks.txt',
+        scriptFilename: isStory ? 'story.txt' : (isCode ? 'script.txt' : 'document.txt'),
         scriptCode: notepadContent,
         previewType: 'text',
-        previewSummary: 'Generated daily tasks schedule document in Notepad.'
+        previewSummary: isStory ? 'Generated creative story in Notepad.' : 'Generated document content in Notepad.'
+      };
+    }
+
+    const isChrome = targetApp === 'chrome' || appInfo.slug === 'chrome' || Boolean(userMessage && userMessage.toLowerCase().match(/chrome|browser|youtube|song|video|web/));
+    const isCalc = targetApp === 'calc' || appInfo.slug === 'calc' || Boolean(userMessage && userMessage.toLowerCase().match(/calc|calculator|ganan/));
+    const isPaint = targetApp === 'paint' || appInfo.slug === 'paint' || Boolean(userMessage && userMessage.toLowerCase().match(/paint|mspaint|draw|chithra/));
+
+    if (isChrome) {
+      const isYouTube = Boolean(userMessage && userMessage.toLowerCase().match(/youtube|song|sindu|sinduwak|music|video|play/));
+      let searchQuery = 'trending sinhala songs';
+      if (userMessage) {
+        const match = userMessage.match(/(?:song|sindu|video|play|search)\s+(?:ekak\s+)?([a-zA-Z0-9\s]+?)(?:\s+(?:play|danna|ahanna|balanna|karanna)|$)/i);
+        if (match && match[1] && match[1].trim().length > 2) {
+          searchQuery = match[1].trim();
+        }
+      }
+      const targetUrl = isYouTube 
+        ? `https://www.youtube.com/results?search_query=${encodeURIComponent(searchQuery)}`
+        : 'https://www.google.com';
+
+      const scriptCode = `# RuXt Autonomous Chrome Automation Script
+# Target: ${targetUrl}
+Start-Process "chrome.exe" -ArgumentList "${targetUrl}"
+Start-Sleep -Milliseconds 1200
+Write-Output "Chrome launched and navigated to: ${targetUrl}"
+`;
+
+      return {
+        success: true,
+        taskTitle: isYouTube ? `Play YouTube Music Video (${searchQuery})` : `Web Navigation (${appInfo.name})`,
+        appInfo: {
+          ...appInfo,
+          found: true,
+          slug: 'chrome',
+          name: 'Google Chrome',
+          exePath: appInfo.exePath || 'chrome.exe'
+        },
+        targetUrl,
+        searchQuery,
+        description: `Autonomous browser launch and media playback for: "${userMessage}".`,
+        steps: [
+          { id: 1, description: 'Locating and launching Google Chrome on host PC...' },
+          { id: 2, description: 'Navigating to YouTube and searching requested track...' },
+          { id: 3, description: 'Bringing Chrome window to active foreground...' },
+          { id: 4, description: 'Gliding cursor to video player and activating stream...' },
+          { id: 5, description: 'Autonomous media playback live on screen...' }
+        ],
+        scriptFilename: 'play_youtube.ps1',
+        scriptCode,
+        previewType: 'text',
+        previewSummary: `Autonomous YouTube playback: ${searchQuery}`
+      };
+    }
+
+    if (isCalc) {
+      return {
+        success: true,
+        taskTitle: 'Mathematical Calculation (Calculator)',
+        appInfo: { ...appInfo, found: true, slug: 'calc', name: 'Calculator' },
+        description: `Autonomous calculator operation for: "${userMessage}".`,
+        steps: [
+          { id: 1, description: 'Locating and launching Windows Calculator on host machine...' },
+          { id: 2, description: 'Bringing Calculator window to active foreground...' },
+          { id: 3, description: 'Gliding cursor and clicking numerical digits...' },
+          { id: 4, description: 'Computing mathematical calculation...' },
+          { id: 5, description: 'Displaying calculation result on screen...' }
+        ],
+        scriptFilename: 'calculate.ps1',
+        scriptCode: `Start-Process calc.exe\nWrite-Output "Calculator launched."`,
+        previewType: 'text',
+        previewSummary: `Calculation in Calculator for: ${userMessage}`
+      };
+    }
+
+    if (isPaint) {
+      return {
+        success: true,
+        taskTitle: 'Digital Art & Canvas (Paint)',
+        appInfo: { ...appInfo, found: true, slug: 'paint', name: 'Paint' },
+        description: `Autonomous digital canvas drawing for: "${userMessage}".`,
+        steps: [
+          { id: 1, description: 'Locating and launching MS Paint on Windows host...' },
+          { id: 2, description: 'Bringing Paint window to active foreground...' },
+          { id: 3, description: 'Moving cursor smoothly onto canvas area...' },
+          { id: 4, description: 'Drawing procedural digital artwork on canvas...' },
+          { id: 5, description: 'Finalizing canvas deliverable in Paint...' }
+        ],
+        scriptFilename: 'draw_paint.ps1',
+        scriptCode: `Start-Process mspaint.exe\nWrite-Output "MS Paint launched."`,
+        previewType: 'text',
+        previewSummary: `Procedural drawing in Paint for: ${userMessage}`
       };
     }
 
@@ -334,6 +435,70 @@ OUTPUT STRICT JSON ONLY in the following schema:
  * Dynamic Notepad Content Generator
  */
 function generateDynamicNotepadContent(userMessage) {
+  const norm = (userMessage || '').toLowerCase();
+  const isStory = Boolean(norm.match(/story|katha|kathawak|kathawa|tale|fable|liyanna/));
+  const hasSinhalaOrSinglish = Boolean(norm.match(/liyanna|ekak|karala|mama|ruxta|oni|kiyala|[\u0D80-\u0DFF]/));
+
+  if (isStory) {
+    if (hasSinhalaOrSinglish) {
+      return `=======================================================
+               කුඩා කුරුල්ලා සහ මහා පර්වතය
+           - RuXt 2.1 Autonomous Live Story -
+=======================================================
+
+ඈත අතීතයේ එක්තරා සුන්දර නිම්නයක, මහා ඕක් ගසක් මුදුනේ කුඩා කුරුල්ලෙක් ජීවත් වුණා.
+හැම උදෑසනකම මේ කුරුල්ලා නිම්නයට ඉහළින් පියාඹමින්, මහා පර්වතය දෙස බලා සොබාදහමේ සුන්දරත්වය වින්දා.
+
+දිනක් මුළු නිම්නයම කළුවර කරමින් මහා කුණාටුවක් හමා ආවා. සතුන් සියල්ලම බියෙන් සැඟවුණා.
+නමුත් මේ කුඩා කුරුල්ලා බිය නොවී, තම මිහිරි හඬින් මුළු නිම්නයටම ඇසෙන්නට ධෛර්යයේ ගීතයක් ගැයුවා.
+
+කුරුල්ලාගේ නිර්භීත හඬ ඇසූ මහා පර්වතය, කුණාටුවේ සැඩ සුළඟින් නිම්නය ආරක්ෂා කළා.
+පසුදා උදෑසන වන විට කුණාටුව පහව ගොස්, අහසේ මනරම් දේදුන්නක් පායා තිබුණා.
+
+පර්වතය පැවසුවා: "වීරත්වය මනින්නේ ශරීරයේ ප්‍රමාණයෙන් නොව, අඳුරු මොහොතක වුවද බලාපොරොත්තුව දල්වන හදවතේ ශක්තියෙනි."
+
+- RuXt Live Screen Operator මඟින් සජීවීව ලියන ලදි.
+=======================================================
+`;
+    }
+
+    return `=======================================================
+          THE LITTLE SPARROW AND THE MOUNTAIN
+          - RuXt 2.1 Autonomous Live Story -
+=======================================================
+
+Once upon a time, nestled at the edge of a sunlit valley, lived a small sparrow on the branches of an ancient oak.
+Every morning, the little bird soared across the meadows, admiring the rugged majesty of the nearby mountain peaks.
+
+One afternoon, dark thunderclouds rolled in, engulfing the valley in a furious tempest. While all the forest creatures fled into their burrows trembling with fear, the sparrow refused to lose hope. Perched firmly upon a high branch, it sang a pure, resolute melody of courage that cut through the thunder.
+
+Moved by the tiny bird's steadfast spirit, the great mountain stood firm against the howling gales, shielding the creatures below. When morning dawned, the storm gave way to radiant sunlight and a shimmering rainbow.
+
+The mountain smiled and whispered: "True courage is not measured by stature, but by the light one brings into the storm."
+
+- Written live into Notepad by RuXt Autonomous Desktop Operator.
+=======================================================
+`;
+  }
+
+  const isCode = Boolean(norm.match(/code|program|script|python|javascript|html/));
+  if (isCode) {
+    return `// =======================================================
+//   RuXt 2.1 Generated Script
+//   Goal: ${userMessage}
+// =======================================================
+
+function runTask() {
+  console.log("RuXt Autonomous Task Execution Started...");
+  const status = { success: true, timestamp: new Date().toISOString() };
+  console.log("Task executed successfully:", status);
+  return status;
+}
+
+runTask();
+`;
+  }
+
   const dateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   return `=======================================================
   RUXT 2.1 LOCAL ENGINE - AUTONOMOUS TASK WORKSPACE
@@ -341,17 +506,12 @@ function generateDynamicNotepadContent(userMessage) {
   Requested Goal: "${userMessage}"
 =======================================================
 
---- TODAY'S HIGH-PRIORITY TASK PIPELINE ---
-[1] 09:00 AM - Sprint Architecture & Workspace Initial Setup
-[2] 10:30 AM - Autonomous Desktop Operator & UI Execution
-[3] 01:00 PM - Quality Control Verification & Specialist Audit
-[4] 03:30 PM - Production Deployment & System Health Monitoring
-[5] 05:00 PM - Daily Wrap-up & Tomorrow's Milestone Planning
+--- DOCUMENT CONTENT ---
+This document was autonomously synthesized and typed live by RuXt 2.1.
+Goal: ${userMessage}
 
---- STATUS & METRICS ---
-* Lead Agent: RuXt (Chief of Staff & Orchestrator)
-* System Host: Local PC (Windows x64)
-* Execution: Live Human-cadence Typing via Desktop Bridge
+* Lead Agent: RuXt (Autonomous Desktop Operator)
+* Status: Successfully executed on Windows Host
 =======================================================
 `;
 }

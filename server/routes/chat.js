@@ -11,6 +11,7 @@ import {
   resolveTargetAppFromPrompt 
 } from '../services/desktopAutomation.js';
 import { startLiveDesktopExecution } from '../services/desktopOperator.js';
+import { startVisionDesktopExecution } from '../services/visionComputerUse.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -261,50 +262,30 @@ Answer the user directly, provide structured and actionable recommendations acco
     const msgLower = (content || '').toLowerCase();
 
     const isDesktopIntent = isRuXtLeader && (
-      msgLower.match(/open|blender|3d|note\s?pad(e)?|notes?|satahan|paint|cursor|vs\s?code|chrome|calc|excel|app eka|pc eke/)
+      msgLower.match(/open|blender|3d|note\s?pad(e)?|notes?|satahan|paint|cursor|vs\s?code|chrome|calc|excel|app eka|pc eke|youtube|song|sindu|play|screen/)
     );
 
     if (isDesktopIntent) {
       try {
-        const targetApp = resolveTargetAppFromPrompt(content);
-
-        const plan = await synthesizeTaskPlanAndScript({
-          userMessage: content,
-          targetApp,
+        const job = await startVisionDesktopExecution({
+          goal: content,
           settings
         });
 
-        const job = await startLiveDesktopExecution({ plan });
+        // User explicit directive: "me wage card ekak oni na bro. but pc eke screen eke task eka wena widiha live pennanna oni."
+        // We do NOT attach desktopAction to prevent rendering the bulky simulated card in chat
+        desktopAction = null;
 
-        desktopAction = {
-          jobId: job.id,
-          taskTitle: plan.taskTitle,
-          appName: plan.appInfo.name,
-          appSlug: plan.appInfo.slug,
-          appFound: plan.appInfo.found,
-          appPath: plan.appInfo.exePath,
-          steps: plan.steps,
-          scriptFilename: plan.scriptFilename,
-          scriptCode: plan.scriptCode,
-          previewType: plan.previewType,
-          previewSummary: plan.previewSummary,
-          jobDir: job.jobDir,
-          status: 'running'
-        };
-
-        usedProvider = 'RuXt Live Screen Operator';
-        usedModel = 'Dynamic Computer Use Engine';
+        usedProvider = 'RuXt Live Engine';
+        usedModel = 'Autonomous Desktop Controller';
 
         replyContent = 
-          `⚡ **RuXt Desktop Operator Activated!**\n\n` +
-          `මම ඔබේ උපදෙස් අනුව **${plan.appInfo.name}** යෙදුම හරහා ඔබ ඉල්ලූ කාර්යය (*${plan.taskTitle}*) සජීවීව ක්‍රියාත්මක කිරීමට පටන් ගත්තා! 🚀\n\n` +
-          `### 🖥️ Live Action Status:\n` +
-          `- **Target Application:** ${plan.appInfo.name} ${plan.appInfo.found ? '✅ (Found on Host)' : '⚠️ (Simulation & Auto-code Mode)'}\n` +
-          `- **Execution Pipeline:** Real-time dynamic script synthesis (Zero Pre-Made Files)\n` +
-          `- **Overlay Banner:** Desktop එක මත **"⚡ RuXt on Work"** HUD banner එක සක්‍රිය කර ඇත.\n\n` +
-          `*(පහත ඇති Live Activity Monitor එකෙන් mouse cursor එක ගමන් කරන ආකාරය, typing සහ console logs සජීවීව නැරඹිය හැක.)*`;
+          `⚡ **RuXt Autonomous Live PC Control Activated!**\n\n` +
+          `මම ඔබේ පරිගණකයේ සැබෑ Screen එක direct access කරමින් කාර්යය (*${content}*) සජීවීව ආරම්භ කළා! 🚀\n\n` +
+          `• **Physical Execution:** Windows Application එක Screen එක ඉදිරියට (Foreground) පැමිණෙන අතර, Mouse Cursor එක සහ Keyboard Typing සජීවීව ඔබේ ඇස් ඉදිරිපිට ක්‍රියාත්මක වේ.\n` +
+          `• **Screen Status:** දැන් ඔබේ Physical Monitor Screen එක මත සජීවීව කාර්යය සිදුවන ආකාරය බලන්න!`;
       } catch (deskErr) {
-        console.warn('[Desktop Operator Error]:', deskErr.message);
+        console.warn('[Vision Operator Error]:', deskErr.message);
       }
     }
 

@@ -7,9 +7,10 @@ import { activeDesktopJobs } from './desktopAutomation.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const appRootDir = path.resolve(__dirname, '../..');
-const runsDir = path.join(appRootDir, 'data', 'desktop_runs');
-const winOperatorPs1 = path.join(__dirname, 'windowsOperator.ps1');
+const dataDir = process.env.RUXT_DATA_DIR || (process.env.APPDATA ? path.join(process.env.APPDATA, 'RuXt', 'data') : path.resolve(__dirname, '../../data'));
+const runsDir = path.join(dataDir, 'desktop_runs');
+const rawPs1Path = path.join(__dirname, 'windowsOperator.ps1');
+const winOperatorPs1 = rawPs1Path.includes('app.asar') ? rawPs1Path.replace('app.asar', 'app.asar.unpacked') : rawPs1Path;
 
 /**
  * Execute a PowerShell action via windowsOperator.ps1
@@ -47,6 +48,18 @@ export async function clickMouse(button = 'left') {
  */
 export async function focusProcess(processName) {
   return runWindowsAction(['-Action', 'focus', '-ProcessName', processName]);
+}
+
+/**
+ * Get coordinates of the center of an application window
+ */
+export async function getWindowCenter(processName) {
+  const out = await runWindowsAction(['-Action', 'get_window_rect', '-ProcessName', processName]);
+  const match = out.match(/:CENTER:(\d+),(\d+)/);
+  if (match) {
+    return { x: parseInt(match[1], 10), y: parseInt(match[2], 10) };
+  }
+  return null;
 }
 
 /**
@@ -138,8 +151,27 @@ export async function startLiveDesktopExecution({
             });
             try {
               spawn(plan.appInfo.exePath, [], { detached: true, stdio: 'ignore' }).unref();
-              await new Promise(r => setTimeout(r, 600));
+              await new Promise(r => setTimeout(r, 800));
             } catch (_) {}
+          } else if (plan.appInfo.slug === 'chrome') {
+            const url = plan.targetUrl || 'https://www.youtube.com/results?search_query=sinhala+songs';
+            broadcast({
+              type: 'log',
+              jobId,
+              text: `[Chrome] Launching Google Chrome to destination: ${url}`
+            });
+            try {
+              spawn('powershell.exe', ['-Command', `Start-Process "chrome.exe" "${url}"`], { detached: true, stdio: 'ignore' }).unref();
+              await new Promise(r => setTimeout(r, 1500));
+            } catch (_) {}
+          } else if (plan.appInfo.slug === 'calc') {
+            broadcast({ type: 'log', jobId, text: `[Calculator] Launching Windows Calculator...` });
+            spawn('calc.exe', [], { detached: true, stdio: 'ignore' }).unref();
+            await new Promise(r => setTimeout(r, 800));
+          } else if (plan.appInfo.slug === 'paint') {
+            broadcast({ type: 'log', jobId, text: `[Paint] Launching MS Paint...` });
+            spawn('mspaint.exe', [], { detached: true, stdio: 'ignore' }).unref();
+            await new Promise(r => setTimeout(r, 800));
           }
         }
 
@@ -151,13 +183,53 @@ export async function startLiveDesktopExecution({
               text: `[Notepad] Bringing Notepad window to foreground...`
             });
             await focusProcess('notepad');
+            await new Promise(r => setTimeout(r, 400));
+            const center = await getWindowCenter('notepad');
+            const targetX = center ? center.x : 540;
+            const targetY = center ? center.y : 380;
+            await moveMouseSmooth(targetX, targetY, 450);
             await new Promise(r => setTimeout(r, 200));
+            await clickMouse('left');
+          } else if (plan.appInfo.slug === 'chrome') {
+            broadcast({
+              type: 'log',
+              jobId,
+              text: `[Chrome] Bringing Google Chrome to active foreground...`
+            });
+            await focusProcess('chrome');
+            await new Promise(r => setTimeout(r, 800));
+            // Move cursor to first YouTube video card and click
+            await moveMouseSmooth(560, 380, 500);
+            await new Promise(r => setTimeout(r, 200));
+            await clickMouse('left');
+          } else if (plan.appInfo.slug === 'calc') {
+            await focusProcess('calculator');
+            await moveMouseSmooth(450, 400, 350);
+            await clickMouse('left');
+          } else if (plan.appInfo.slug === 'paint') {
+            await focusProcess('mspaint');
+            await moveMouseSmooth(500, 400, 350);
+            await clickMouse('left');
+          } else {
+            await moveMouseSmooth(450, 320, 450);
+            await new Promise(r => setTimeout(r, 150));
+            await clickMouse('left');
           }
-          await moveMouseSmooth(450, 320, 450);
-          await new Promise(r => setTimeout(r, 150));
-          await clickMouse('left');
         } else if (i === 2) {
-          await moveMouseSmooth(720, 480, 400);
+          if (plan.appInfo.slug === 'notepad') {
+            await focusProcess('notepad');
+            await new Promise(r => setTimeout(r, 250));
+          } else if (plan.appInfo.slug === 'chrome') {
+            broadcast({
+              type: 'log',
+              jobId,
+              text: `[Chrome] Buffering video stream and focusing player...`
+            });
+            await focusProcess('chrome');
+            await new Promise(r => setTimeout(r, 600));
+          } else {
+            await moveMouseSmooth(720, 480, 400);
+          }
         }
 
         if (i === 3 && plan.appInfo.found && plan.appInfo.exePath) {
@@ -165,17 +237,45 @@ export async function startLiveDesktopExecution({
             broadcast({
               type: 'log',
               jobId,
-              text: `[Notepad] Typing tasks live into Notepad document...`
+              text: `[Notepad] Typing content live into Notepad document...`
             });
+            await focusProcess('notepad');
+            await new Promise(r => setTimeout(r, 200));
+
             const textToType = plan.scriptCode || '';
-            const b64 = Buffer.from(textToType).toString('base64');
-            // Safe live typing via base64 in windowsOperator.ps1
-            await runWindowsAction(['-Action', 'type', '-TextBase64', b64, '-TypeDelayMs', '10']);
+            const b64 = Buffer.from(textToType, 'utf8').toString('base64');
+            // Safe live typing via WinInput with Unicode support in windowsOperator.ps1
+            await runWindowsAction(['-Action', 'type', '-TextBase64', b64, '-TypeDelayMs', '15']);
             broadcast({
               type: 'log',
               jobId,
               text: `[Notepad] Live typing completed successfully!`
             });
+          } else if (plan.appInfo.slug === 'chrome') {
+            broadcast({
+              type: 'log',
+              jobId,
+              text: `[Chrome] Activating video playback and unmuting stream...`
+            });
+            await focusProcess('chrome');
+            await new Promise(r => setTimeout(r, 400));
+            // Send 'k' (YouTube play/pause shortcut) or Space
+            await runWindowsAction(['-Action', 'type', '-Text', 'k', '-TypeDelayMs', '10']);
+            broadcast({
+              type: 'log',
+              jobId,
+              text: `[Chrome] YouTube music stream is now actively playing live on your screen!`
+            });
+          } else if (plan.appInfo.slug === 'calc') {
+            broadcast({ type: 'log', jobId, text: `[Calculator] Executing calculation keys...` });
+            await focusProcess('calculator');
+            await runWindowsAction(['-Action', 'type', '-Text', '1250*45=', '-TypeDelayMs', '50']);
+          } else if (plan.appInfo.slug === 'paint') {
+            broadcast({ type: 'log', jobId, text: `[Paint] Drawing procedural shapes on canvas...` });
+            await focusProcess('mspaint');
+            await moveMouseSmooth(400, 300, 200);
+            await clickMouse('left');
+            await moveMouseSmooth(600, 500, 400);
           } else if (plan.appInfo.slug === 'blender') {
             const blendOutPath = path.join(jobDir, 'scene.blend');
             broadcast({
@@ -219,9 +319,6 @@ export async function startLiveDesktopExecution({
                 stdio: 'ignore'
               }).unref();
             } catch (_) {}
-          } else if (plan.appInfo.slug === 'notepad') {
-            // Launch Notepad with the generated file
-            spawn(plan.appInfo.exePath, [scriptPath], { detached: true, stdio: 'ignore' }).unref();
           } else if (plan.appInfo.slug === 'vscode' || plan.appInfo.slug === 'cursor') {
             // Open in Code
             spawn(plan.appInfo.exePath, [jobDir], { detached: true, stdio: 'ignore' }).unref();

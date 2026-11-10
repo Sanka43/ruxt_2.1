@@ -12,6 +12,10 @@ import {
   startLiveDesktopExecution, 
   abortLiveDesktopExecution 
 } from '../services/desktopOperator.js';
+import { 
+  startVisionDesktopExecution, 
+  stopScreenBorder 
+} from '../services/visionComputerUse.js';
 import db from '../db.js';
 
 const router = Router();
@@ -57,6 +61,31 @@ router.post('/execute-live', async (req, res) => {
   }
 });
 
+// 2b. Start an autonomous vision-based computer use task
+router.post('/execute-vision', async (req, res) => {
+  try {
+    const { goal, settings = {} } = req.body;
+    if (!goal) {
+      return res.status(400).json({ error: 'goal is required' });
+    }
+
+    const job = await startVisionDesktopExecution({
+      goal,
+      settings
+    });
+
+    res.json({
+      success: true,
+      jobId: job.id,
+      goal: job.goal,
+      steps: job.steps,
+      taskContract: job.taskContract
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // 3. Server-Sent Events (SSE) stream for live step progress and terminal logs
 router.get('/stream/:jobId', (req, res) => {
   const { jobId } = req.params;
@@ -87,7 +116,33 @@ router.get('/stream/:jobId', (req, res) => {
 router.post('/abort/:jobId', (req, res) => {
   const { jobId } = req.params;
   const success = abortLiveDesktopExecution(jobId);
+  stopScreenBorder();
   res.json({ success });
+});
+
+// 4b. Emergency stop all running desktop / vision tasks
+router.post('/abort-active', (req, res) => {
+  let count = 0;
+  for (const [id, job] of activeDesktopJobs.entries()) {
+    if (job.status === 'running') {
+      abortLiveDesktopExecution(id);
+      count++;
+    }
+  }
+  stopScreenBorder();
+  res.json({ success: true, abortedCount: count });
+});
+
+// 4c. Get status of running desktop task for UI indicator
+router.get('/active-status', (req, res) => {
+  let activeJob = null;
+  for (const [id, job] of activeDesktopJobs.entries()) {
+    if (job.status === 'running') {
+      activeJob = { id, goal: job.goal, appName: job.appName || 'PC Task' };
+      break;
+    }
+  }
+  res.json({ active: !!activeJob, job: activeJob });
 });
 
 // 5. Open project folder in Windows File Explorer

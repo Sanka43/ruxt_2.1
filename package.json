@@ -4,6 +4,10 @@
   "description": "RuXt 2.1 - Zero-Config AI Agent Desktop Platform",
   "main": "electron/main.cjs",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Sanka43/ruxt_2.1.git"
+  },
   "scripts": {
     "dev": "concurrently \"cross-env ELECTRON_RUN_AS_NODE=1 electron server/index.js\" \"vite\"",
     "build": "vite build",
@@ -21,6 +25,13 @@
   "build": {
     "appId": "dev.ruxt.desktop",
     "productName": "RuXt AI Studio",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Sanka43",
+        "repo": "ruxt_2.1"
+      }
+    ],
     "directories": {
       "output": "release"
     },

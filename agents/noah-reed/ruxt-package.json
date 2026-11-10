@@ -1,0 +1,7 @@
+{
+  "format": "ruxt-agent-package/v1",
+  "slug": "noah-reed",
+  "preferredExtension": ".\ud83d\udd30",
+  "fallbackExtension": ".ruxt",
+  "note": "RuXt humanized agent package. Use .\ud83d\udd30 when the OS supports emoji extensions; otherwise use .ruxt. Both are ZIP archives."
+}

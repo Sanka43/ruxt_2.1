@@ -1,0 +1,10 @@
+{
+  "format": "common-room-connection/v1",
+  "dashboardUrl": "http://127.0.0.1:4173",
+  "frameworkId": "common-room/tax-compliance-adviser/v1",
+  "installationId": "cb72f420-0117-4d17-8b53-65b716955765",
+  "agentName": "Noah Reed",
+  "role": "Tax and compliance adviser",
+  "status": "ready_to_connect",
+  "apiKey": null
+}

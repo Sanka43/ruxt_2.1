@@ -1,0 +1,296 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root,
+[data-theme="dark"] {
+  --theme-bg: #0b0f19;
+  --theme-sidebar: #090d16;
+  --theme-header: rgba(13, 19, 34, 0.85);
+  --theme-card: rgba(15, 23, 42, 0.6);
+  --theme-card-solid: #0f172a;
+  --theme-border: rgba(51, 65, 85, 0.8);
+  --theme-accent: #6366f1;
+  --theme-accent-hover: #4f46e5;
+  --theme-accent-text: #ffffff;
+  --theme-accent-glow: rgba(99, 102, 241, 0.25);
+  --theme-text-main: #f8fafc;
+  --theme-text-muted: #94a3b8;
+}
+
+[data-theme="ruxt"] {
+  --theme-bg: #08140f;
+  --theme-sidebar: #050e0a;
+  --theme-header: rgba(10, 26, 19, 0.85);
+  --theme-card: rgba(16, 43, 33, 0.6);
+  --theme-card-solid: #102b21;
+  --theme-border: rgba(20, 80, 55, 0.7);
+  --theme-accent: #10b981;
+  --theme-accent-hover: #059669;
+  --theme-accent-text: #ffffff;
+  --theme-accent-glow: rgba(16, 185, 129, 0.25);
+  --theme-text-main: #f0fdf4;
+  --theme-text-muted: #86efac;
+}
+
+[data-theme="light"] {
+  --theme-bg: #f8fafc;
+  --theme-sidebar: #f1f5f9;
+  --theme-header: rgba(255, 255, 255, 0.95);
+  --theme-card: rgba(255, 255, 255, 0.9);
+  --theme-card-solid: #ffffff;
+  --theme-border: rgba(203, 213, 225, 0.9);
+  --theme-accent: #1967ff;
+  --theme-accent-hover: #0d52db;
+  --theme-accent-text: #ffffff;
+  --theme-accent-glow: rgba(25, 103, 255, 0.25);
+  --theme-text-main: #0f172a;
+  --theme-text-muted: #475569;
+}
+
+[data-theme="ocean"] {
+  --theme-bg: #061219;
+  --theme-sidebar: #040d12;
+  --theme-header: rgba(8, 26, 36, 0.85);
+  --theme-card: rgba(11, 43, 59, 0.6);
+  --theme-card-solid: #0b2b3b;
+  --theme-border: rgba(15, 111, 138, 0.65);
+  --theme-accent: #06b6d4;
+  --theme-accent-hover: #0891b2;
+  --theme-accent-text: #ffffff;
+  --theme-accent-glow: rgba(6, 182, 212, 0.25);
+  --theme-text-main: #f0fdfa;
+  --theme-text-muted: #67e8f9;
+}
+
+[data-theme="sand"] {
+  --theme-bg: #15100c;
+  --theme-sidebar: #0e0b08;
+  --theme-header: rgba(32, 22, 16, 0.85);
+  --theme-card: rgba(45, 30, 20, 0.6);
+  --theme-card-solid: #291c14;
+  --theme-border: rgba(139, 90, 43, 0.65);
+  --theme-accent: #f59e0b;
+  --theme-accent-hover: #d97706;
+  --theme-accent-text: #ffffff;
+  --theme-accent-glow: rgba(245, 158, 11, 0.25);
+  --theme-text-main: #fefce8;
+  --theme-text-muted: #fde047;
+}
+
+/* Custom Accent Overrides */
+[data-accent="indigo"] { --theme-accent: #6366f1; --theme-accent-hover: #4f46e5; }
+[data-accent="emerald"] { --theme-accent: #10b981; --theme-accent-hover: #059669; }
+[data-accent="blue"] { --theme-accent: #1967ff; --theme-accent-hover: #0d52db; }
+[data-accent="cyan"] { --theme-accent: #06b6d4; --theme-accent-hover: #0891b2; }
+[data-accent="amber"] { --theme-accent: #f59e0b; --theme-accent-hover: #d97706; }
+[data-accent="rose"] { --theme-accent: #f43f5e; --theme-accent-hover: #e11d48; }
+[data-accent="violet"] { --theme-accent: #8b5cf6; --theme-accent-hover: #7c3aed; }
+
+/* Font ligatures */
+[data-ligatures="false"] code,
+[data-ligatures="false"] pre {
+  font-variant-ligatures: none !important;
+  font-feature-settings: "liga" 0 !important;
+}
+
+@layer base {
+  body {
+    background-color: var(--theme-bg);
+    color: var(--theme-text-main);
+    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    user-select: none;
+    transition: background-color 0.25s ease, color 0.25s ease;
+  }
+}
+
+/* Custom modern scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.4);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.4);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.6);
+}
+
+/* Polished RuXt Markdown Styling */
+.ruxt-markdown {
+  word-break: break-word;
+}
+
+.ruxt-markdown h1 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin-top: 1.1rem;
+  margin-bottom: 0.6rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid rgba(51, 65, 85, 0.6);
+}
+
+.ruxt-markdown h1:first-child,
+.ruxt-markdown h2:first-child,
+.ruxt-markdown h3:first-child {
+  margin-top: 0;
+}
+
+.ruxt-markdown h2 {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #a5b4fc;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.ruxt-markdown h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  margin-top: 0.85rem;
+  margin-bottom: 0.4rem;
+}
+
+.ruxt-markdown h4,
+.ruxt-markdown h5,
+.ruxt-markdown h6 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #cbd5e1;
+  margin-top: 0.75rem;
+  margin-bottom: 0.3rem;
+}
+
+.ruxt-markdown p {
+  margin-bottom: 0.75rem;
+  line-height: 1.65;
+  color: #e2e8f0;
+}
+
+.ruxt-markdown p:last-child {
+  margin-bottom: 0;
+}
+
+.ruxt-markdown strong {
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.ruxt-markdown em {
+  font-style: italic;
+  color: #cbd5e1;
+}
+
+.ruxt-markdown ul {
+  list-style-type: disc;
+  padding-left: 1.35rem;
+  margin-bottom: 0.75rem;
+}
+
+.ruxt-markdown ol {
+  list-style-type: decimal;
+  padding-left: 1.35rem;
+  margin-bottom: 0.75rem;
+}
+
+.ruxt-markdown li {
+  line-height: 1.6;
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+  color: #e2e8f0;
+}
+
+.ruxt-markdown li::marker {
+  color: #818cf8;
+}
+
+.ruxt-markdown li > ul,
+.ruxt-markdown li > ol {
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+  padding-left: 1.15rem;
+  list-style-type: circle;
+}
+
+.ruxt-markdown hr {
+  border: 0;
+  border-top: 1px solid rgba(71, 85, 105, 0.6);
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+}
+
+.ruxt-markdown blockquote {
+  border-left: 3px solid #6366f1;
+  padding-left: 0.85rem;
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
+  margin-top: 0.75rem;
+  margin-bottom: 0.75rem;
+  background: rgba(30, 27, 75, 0.25);
+  border-radius: 0 0.5rem 0.5rem 0;
+  color: #cbd5e1;
+  font-style: italic;
+}
+
+.ruxt-markdown code:not(pre code) {
+  background: rgba(2, 6, 23, 0.8);
+  color: #a5b4fc;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.75rem;
+  padding: 0.15rem 0.35rem;
+  border-radius: 0.35rem;
+  border: 1px solid rgba(51, 65, 85, 0.6);
+}
+
+.ruxt-markdown a {
+  color: #818cf8;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 0.15s ease;
+}
+
+.ruxt-markdown a:hover {
+  color: #c7d2fe;
+}
+
+.ruxt-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.75rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.75rem;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  border: 1px solid rgba(51, 65, 85, 0.7);
+}
+
+.ruxt-markdown thead {
+  background: rgba(15, 23, 42, 0.9);
+}
+
+.ruxt-markdown th {
+  padding: 0.5rem 0.75rem;
+  font-weight: 600;
+  color: #f1f5f9;
+  border-bottom: 1px solid rgba(51, 65, 85, 0.8);
+  text-align: left;
+}
+
+.ruxt-markdown td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid rgba(51, 65, 85, 0.4);
+  color: #cbd5e1;
+}
+
+.ruxt-markdown tr:last-child td {
+  border-bottom: none;
+}

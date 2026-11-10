@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Elena Voss · Chess</title>
+  <link rel="stylesheet" href="./chess.css" />
+</head>
+<body>
+  <div class="table">
+    <header class="top">
+      <div>
+        <h1>Elena Voss</h1>
+        <p>Chess teacher</p>
+      </div>
+      <span id="turnBadge">White to move</span>
+    </header>
+
+    <main class="layout">
+      <section class="board-panel">
+        <div class="board-frame">
+          <div class="coord-files top" id="topFiles"></div>
+          <div class="board-mid">
+            <div class="coord-ranks" id="leftRanks"></div>
+            <div id="board" class="board" aria-label="Chess board"></div>
+          </div>
+          <div class="coord-files bottom" id="bottomFiles"></div>
+        </div>
+        <div class="actions">
+          <button type="button" id="newGameBtn">New game</button>
+          <button type="button" id="hintBtn" class="soft">Hint</button>
+        </div>
+      </section>
+
+      <aside class="side">
+        <section class="lesson">
+          <h2>Elena</h2>
+          <p id="coachText">You play White. If you make a mistake, I’ll say what you should have done and why — using your computer voice.</p>
+        </section>
+        <section class="moves">
+          <h2>Moves</h2>
+          <ol id="moveList"></ol>
+        </section>
+      </aside>
+    </main>
+  </div>
+  <script src="./chess.js"></script>
+</body>
+</html>

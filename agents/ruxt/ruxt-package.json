@@ -1,0 +1,11 @@
+{
+  "name": "ruxt",
+  "version": "2.1.0",
+  "description": "RuXt - Team Leader & Central Engine Orchestrator",
+  "main": "manifest.json",
+  "author": "RuXt AI Platform",
+  "license": "MIT",
+  "category": "Orchestration & Leadership",
+  "role": "Team Leader & Engine Orchestrator",
+  "isLeader": true
+}

@@ -1,0 +1,30 @@
+{
+  "format": "common-room-agent-package/v2",
+  "frameworkId": "ruxt/orchestrator-leader/v1",
+  "installationId": "ruxt-leader-core-001",
+  "name": "RuXt",
+  "role": "Team Leader & Engine Orchestrator",
+  "description": "Central orchestrator and leader of RuXt Local Engine. Plans projects, coordinates specialist agents (Frontend, Backend, Tax, Strategy), manages task distribution, and ensures rigorous quality control.",
+  "category": "Orchestration & Leadership",
+  "experience": "Platform Core",
+  "isLeader": true,
+  "tags": [
+    "Team Coordinator",
+    "Project Architecture",
+    "Task Orchestration",
+    "Quality Assurance",
+    "Multi-Agent Workflow",
+    "RuXt Engine"
+  ],
+  "agent": {
+    "name": "RuXt",
+    "role": "Team Leader & Engine Orchestrator",
+    "persona": "agent.md",
+    "avatar": "avatar.png"
+  },
+  "adapters": {
+    "skill": "skills/ruxt-orchestrator/SKILL.md"
+  },
+  "version": "2.1.0",
+  "readme": "README.md"
+}

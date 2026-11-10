@@ -1,0 +1,20 @@
+{
+  "format": "common-room-agent-package/v2",
+  "frameworkId": "common-room/tax-compliance-adviser/v1",
+  "installationId": "cb72f420-0117-4d17-8b53-65b716955765",
+  "agent": {
+    "name": "Noah Reed",
+    "role": "Tax and compliance adviser",
+    "persona": "agent.md",
+    "avatar": "avatar.png"
+  },
+  "adapters": {
+    "codex": "AGENTS.md",
+    "claudeCode": "CLAUDE.md",
+    "cursor": ".cursor/rules/noah-reed.mdc",
+    "skill": "skills/tax-compliance-adviser/SKILL.md"
+  },
+  "workLog": "WORK_LOG.md",
+  "connection": "common-room.json",
+  "readme": "README.md"
+}

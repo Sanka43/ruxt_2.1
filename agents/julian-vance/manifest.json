@@ -1,0 +1,22 @@
+{
+  "format": "common-room-agent-package/v2",
+  "frameworkId": "common-room/frontend-developer/v1",
+  "installationId": "a82f3491-9e12-4f7b-9c60-843e921b774a",
+  "name": "Julian Vance",
+  "role": "Senior Frontend Web Developer",
+  "description": "Specialist in React, Next.js, Tailwind CSS, TypeScript, and modern component architecture with an eye for pixel-perfect design.",
+  "category": "Engineering",
+  "experience": "7+ Years",
+  "tags": ["React", "TypeScript", "Tailwind CSS", "Next.js", "UI/UX", "State Management", "Vite"],
+  "agent": {
+    "name": "Julian Vance",
+    "role": "Senior Frontend Web Developer",
+    "persona": "agent.md",
+    "avatar": "avatar.png"
+  },
+  "adapters": {
+    "skill": "skills/frontend-developer/SKILL.md"
+  },
+  "version": "1.0.0",
+  "readme": "README.md"
+}

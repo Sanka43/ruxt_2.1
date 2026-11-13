@@ -2,6 +2,7 @@
   "name": "ruxt-desktop",
   "version": "2.0.0",
   "description": "RuXt 2.1 - Zero-Config AI Agent Desktop Platform",
+  "author": "Sanka43 <isankaerangahtc820@gmail.com>",
   "main": "electron/main.cjs",
   "type": "module",
   "repository": {
@@ -71,6 +72,7 @@
         "AppImage",
         "deb"
       ],
+      "maintainer": "isankaerangahtc820@gmail.com",
       "category": "Development",
       "icon": "public/ruxt-logo.png"
     }

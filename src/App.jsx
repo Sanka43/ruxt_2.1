@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import SettingsView, { playSound } from './components/SettingsView.jsx';
 import BoardRoomPanel from './components/BoardRoomPanel.jsx';
 import KanbanBoard from './components/KanbanBoard.jsx';
 import MarkdownRenderer from './components/MarkdownRenderer.jsx';
 import DesktopLiveOperatorCard from './components/DesktopLiveOperatorCard.jsx';
+import AgentStudioModal from './components/AgentStudioModal.jsx';
 import { 
   Bot, 
   MessageSquare, 
@@ -25,6 +26,7 @@ import {
   ShoppingBag,
   Users,
   Download,
+  Upload,
   Star,
   Search,
   Check,
@@ -46,7 +48,10 @@ import {
   Mic,
   Paperclip,
   Folder,
-  Landmark
+  Landmark,
+  Wand2,
+  Sun,
+  Moon
 } from 'lucide-react';
 
 function EngineStatusControl({ providerId, currentStatus, onSetStatus }) {
@@ -107,23 +112,58 @@ export const AVATAR_MAP = {
   'numbers': '/agent-avatars/numbers.png'
 };
 
-export function getAgentAvatar(slug, customAvatar = null) {
-  if (customAvatar && (customAvatar.startsWith('data:') || customAvatar.startsWith('http://') || customAvatar.startsWith('https://'))) {
-    return customAvatar;
+export function getAgentAvatar(slug, customAvatar = null, version = null) {
+  let url = '';
+
+  // 1. If explicit customAvatar is provided and valid
+  if (customAvatar && typeof customAvatar === 'string' && customAvatar.trim()) {
+    const trimmed = customAvatar.trim();
+    if (
+      trimmed.startsWith('data:') ||
+      trimmed.startsWith('http://') ||
+      trimmed.startsWith('https://') ||
+      trimmed.startsWith('/') ||
+      trimmed.startsWith('./')
+    ) {
+      url = trimmed;
+    }
   }
-  const cleanSlug = (slug || '').toLowerCase().trim();
-  if (cleanSlug.includes('elena-voss')) return '/agent-avatars/elena-voss.png';
-  if (cleanSlug.includes('julian-vance')) return '/agent-avatars/julian-vance.png';
-  if (cleanSlug.includes('maya-brooks')) return '/agent-avatars/maya-brooks.png';
-  if (cleanSlug.includes('noah-reed')) return '/agent-avatars/noah-reed.png';
-  if (cleanSlug.includes('marcus-sterling')) return '/agent-avatars/marcus-sterling.png';
-  if (cleanSlug.includes('numbers')) return '/agent-avatars/numbers.png';
-  if (cleanSlug === 'ruxt') return '/agent-avatars/ruxt.png';
-  
-  if (customAvatar && customAvatar.startsWith('/agent-avatars/')) {
-    return customAvatar;
+
+  // 2. If no valid custom avatar URL yet, resolve by slug
+  if (!url) {
+    const cleanSlug = (slug || '').toLowerCase().trim();
+    if (cleanSlug) {
+      if (AVATAR_MAP[cleanSlug]) {
+        url = AVATAR_MAP[cleanSlug];
+      } else if (cleanSlug.includes('elena-voss')) {
+        url = '/agent-avatars/elena-voss.png';
+      } else if (cleanSlug.includes('julian-vance')) {
+        url = '/agent-avatars/julian-vance.png';
+      } else if (cleanSlug.includes('maya-brooks')) {
+        url = '/agent-avatars/maya-brooks.png';
+      } else if (cleanSlug.includes('noah-reed')) {
+        url = '/agent-avatars/noah-reed.png';
+      } else if (cleanSlug.includes('marcus-sterling')) {
+        url = '/agent-avatars/marcus-sterling.png';
+      } else if (cleanSlug.includes('numbers')) {
+        url = '/agent-avatars/numbers.png';
+      } else if (cleanSlug === 'ruxt') {
+        url = '/agent-avatars/ruxt.png';
+      } else {
+        // Any custom specialist created via Agent Studio (e.g. damon-cole)
+        url = `/agent-avatars/${cleanSlug}.png`;
+      }
+    } else {
+      url = '/agent-avatars/ruxt.png';
+    }
   }
-  return AVATAR_MAP[cleanSlug] || '/agent-avatars/ruxt.png';
+
+  // 3. Optional version query param for cache busting
+  if (version && url && !url.startsWith('data:') && !url.includes('?')) {
+    url = `${url}?v=${encodeURIComponent(version)}`;
+  }
+
+  return url;
 }
 
 const DEFAULT_SPECIALISTS = [
@@ -302,6 +342,10 @@ export default function App() {
   const [marketplaceSearch, setMarketplaceSearch] = useState('');
   const [installingSlug, setInstallingSlug] = useState(null);
   const [selectedMarketAgent, setSelectedMarketAgent] = useState(null);
+  const [isAgentStudioOpen, setIsAgentStudioOpen] = useState(false);
+  const [agentToEdit, setAgentToEdit] = useState(null);
+  const [isImportingPackage, setIsImportingPackage] = useState(false);
+  const ruxtFileInputRef = useRef(null);
   const [tasks, setTasks] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [activeSession, setActiveSession] = useState(null);
@@ -594,12 +638,27 @@ export default function App() {
     setIsSettingsOpen(true);
   };
 
+  const wasDesktopRunningRef = useRef(false);
+  const activeSessionIdRef = useRef(activeSession?.id);
+  useEffect(() => {
+    activeSessionIdRef.current = activeSession?.id;
+  }, [activeSession?.id]);
+
   const handleAbortActiveDesktop = async () => {
     try {
       await fetch('/api/desktop/abort-active', { method: 'POST' });
       setIsDesktopRunning(false);
       setActiveDesktopGoal('');
       showNotification('⏹️ Vision Engine aborted by user', 'info');
+      if (activeSession?.id && !activeSession.id.startsWith('temp-')) {
+        setTimeout(async () => {
+          try {
+            const msgRes = await fetch(`/api/chat/sessions/${activeSession.id}/messages`);
+            const msgData = await msgRes.json();
+            if (msgData?.messages) setMessages(msgData.messages);
+          } catch (_) {}
+        }, 600);
+      }
     } catch (err) {
       console.error('Failed to abort desktop task:', err);
     }
@@ -613,9 +672,26 @@ export default function App() {
         const res = await fetch('/api/desktop/active-status');
         const data = await res.json();
         if (isMounted) {
-          setIsDesktopRunning(!!data?.active);
+          const wasActive = wasDesktopRunningRef.current;
+          const isActive = !!data?.active;
+          setIsDesktopRunning(isActive);
+          wasDesktopRunningRef.current = isActive;
+
           if (data?.job?.goal) setActiveDesktopGoal(data.job.goal);
-          else if (!data?.active) setActiveDesktopGoal('');
+          else if (!isActive) setActiveDesktopGoal('');
+
+          // When desktop execution finishes or stops halfway, immediately refresh chat messages
+          if (wasActive && !isActive && activeSessionIdRef.current && !activeSessionIdRef.current.startsWith('temp-')) {
+            setTimeout(async () => {
+              try {
+                const msgRes = await fetch(`/api/chat/sessions/${activeSessionIdRef.current}/messages`);
+                const msgData = await msgRes.json();
+                if (msgData?.messages && isMounted) {
+                  setMessages(msgData.messages);
+                }
+              } catch (_) {}
+            }, 600);
+          }
         }
       } catch (_) {}
     };
@@ -649,8 +725,8 @@ export default function App() {
 
   // Synchronize Active Theme Preset & Ergonomics across entire Application
   useEffect(() => {
-    const theme = settings.theme_preset || 'dark';
-    const accent = settings.theme_accent || 'indigo';
+    const theme = settings.theme_preset || 'light';
+    const accent = settings.theme_accent || (theme === 'light' ? 'blue' : 'indigo');
     const density = settings.ui_density || 'comfortable';
     const ligatures = settings.font_ligatures !== 'false';
 
@@ -658,7 +734,28 @@ export default function App() {
     document.documentElement.setAttribute('data-accent', accent);
     document.documentElement.setAttribute('data-density', density);
     document.documentElement.setAttribute('data-ligatures', ligatures ? 'true' : 'false');
+
+    const LIGHT_THEMES = ['light', 'solarized-light', 'pure-white'];
+    const isLightTheme = LIGHT_THEMES.includes(theme);
+
+    if (isLightTheme) {
+      document.documentElement.classList.remove('dark');
+      document.documentElement.classList.add('light');
+    } else {
+      document.documentElement.classList.remove('light');
+      document.documentElement.classList.add('dark');
+    }
   }, [settings.theme_preset, settings.theme_accent, settings.ui_density, settings.font_ligatures]);
+
+  const isLightMode = ['light', 'solarized-light', 'pure-white'].includes(settings.theme_preset || 'light');
+
+  const toggleLightDarkTheme = () => {
+    const current = settings.theme_preset || 'light';
+    const isCurrentlyLight = ['light', 'solarized-light', 'pure-white'].includes(current);
+    const nextTheme = isCurrentlyLight ? 'dark' : 'light';
+    handleSaveSetting('theme_preset', nextTheme);
+    showNotification(`Switched to ${nextTheme === 'light' ? 'Clean Light' : 'Focus Dark'} mode!`, 'info');
+  };
 
   // Runtime Detection & Diagnostics States
   const [detectedRuntimes, setDetectedRuntimes] = useState([]);
@@ -670,6 +767,22 @@ export default function App() {
     setNotification({ msg, type });
     setTimeout(() => setNotification(null), 4000);
   };
+
+  // Background Updater Notification Listener
+  useEffect(() => {
+    if (window.ruxtDesktop?.onUpdaterEvent) {
+      const unsubAvail = window.ruxtDesktop.onUpdaterEvent('updater-update-available', (info) => {
+        showNotification(`🎉 New update v${info.version} available! Check Settings > Software Updates.`, 'info');
+      });
+      const unsubDownloaded = window.ruxtDesktop.onUpdaterEvent('updater-downloaded', (info) => {
+        showNotification(`🚀 Update v${info.version} downloaded! Restart to apply.`, 'success');
+      });
+      return () => {
+        if (typeof unsubAvail === 'function') unsubAvail();
+        if (typeof unsubDownloaded === 'function') unsubDownloaded();
+      };
+    }
+  }, []);
 
   // Fetch Marketplace Catalog
   const fetchMarketplaceAgents = async () => {
@@ -826,6 +939,57 @@ export default function App() {
     } catch (err) {
       showNotification(`✕ Error: ${err.message}`, 'error');
     }
+  };
+
+  // Import .ruxt Package Handler
+  const handleImportRuxtPackage = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsImportingPackage(true);
+    showNotification(`Importing ${file.name}...`);
+
+    try {
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        try {
+          const fileBase64 = event.target?.result;
+          const res = await fetch('/api/marketplace/import-package', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fileBase64,
+              fileName: file.name
+            })
+          });
+
+          const data = await res.json();
+          if (!res.ok || !data.success) {
+            throw new Error(data.error || 'Failed to import agent package');
+          }
+
+          showNotification(`✓ ${data.message || 'Agent package imported successfully!'}`);
+          await fetchAllData();
+          await fetchMarketplaceAgents();
+        } catch (innerErr) {
+          showNotification(`✕ Import failed: ${innerErr.message}`, 'error');
+        } finally {
+          setIsImportingPackage(false);
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      showNotification(`✕ Error reading package: ${err.message}`, 'error');
+      setIsImportingPackage(false);
+    } finally {
+      if (e.target) e.target.value = '';
+    }
+  };
+
+  // Open Agent Studio in Edit / Skill Up Mode
+  const handleOpenEditAgent = (targetAgent) => {
+    setAgentToEdit(targetAgent);
+    setIsAgentStudioOpen(true);
   };
 
   // Voice Speech Recognition Handler
@@ -1416,7 +1580,7 @@ export default function App() {
         map.set(a.slug, {
           ...(map.get(a.slug) || {}),
           ...a,
-          avatar: getAgentAvatar(a.slug, a.avatar)
+          avatar: getAgentAvatar(a.slug, a.avatar, a.version)
         });
       }
     });
@@ -1425,8 +1589,8 @@ export default function App() {
       if (a && a.slug) {
         const existing = map.get(a.slug) || {};
         const resolvedAvatar = a.slug === 'ruxt' 
-          ? (settings.team_leader_avatar ? getAgentAvatar('ruxt', settings.team_leader_avatar) : getAgentAvatar('ruxt', a.avatar))
-          : getAgentAvatar(a.slug, a.avatar);
+          ? (settings.team_leader_avatar ? getAgentAvatar('ruxt', settings.team_leader_avatar, a.version) : getAgentAvatar('ruxt', a.avatar, a.version))
+          : getAgentAvatar(a.slug, a.avatar, a.version);
         map.set(a.slug, {
           ...existing,
           ...a,
@@ -1455,7 +1619,7 @@ export default function App() {
     if (found) {
       return {
         ...found,
-        avatar: getAgentAvatar(found.slug, found.avatar)
+        avatar: getAgentAvatar(found.slug, found.avatar, found.version)
       };
     }
 
@@ -1525,19 +1689,19 @@ export default function App() {
       )}
 
       {/* Left Sidebar */}
-      <aside className="w-64 border-r backdrop-blur flex flex-col justify-between transition-colors duration-250" style={{ backgroundColor: 'var(--theme-sidebar)', borderColor: 'var(--theme-border)' }}>
+      <aside className="w-64 sm:w-68 border-r backdrop-blur flex flex-col justify-between transition-colors duration-250 select-none" style={{ backgroundColor: 'var(--theme-sidebar)', borderColor: 'var(--theme-border)' }}>
         <div className="p-3.5 flex-1 overflow-y-auto space-y-3">
           {/* Quick Team Leader Command Card with Expandable History */}
-          <div className="rounded-2xl overflow-hidden border border-transparent hover:border-slate-800 transition">
+          <div className="rounded-2xl overflow-hidden border border-transparent hover:border-slate-300 dark:hover:border-slate-800 transition">
             <div 
               onClick={() => {
                 handleOpenRuxtChat();
                 setExpandedAgentHistories(prev => ({ ...prev, ruxt: !prev.ruxt }));
               }}
-              className={`p-3 rounded-2xl bg-gradient-to-r from-indigo-950/70 to-slate-900 border transition shadow-lg group cursor-pointer ${
+              className={`p-3 rounded-2xl border transition shadow-xs group cursor-pointer ${
                 activeTab === 'chat' && activeSession?.agent_id === 'ruxt'
-                  ? 'border-indigo-400 ring-2 ring-indigo-500/30 shadow-indigo-500/20'
-                  : 'border-indigo-500/30 hover:border-indigo-400/60'
+                  ? 'bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-amber-500/5 dark:from-indigo-950/70 dark:to-slate-900 border-amber-400 dark:border-indigo-400 ring-2 ring-amber-400/30 dark:ring-indigo-500/30 shadow-md shadow-amber-500/10'
+                  : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-amber-400/60 dark:hover:border-indigo-400/60'
               }`}
               title="Chat with RuXt (Team Leader)"
             >
@@ -1547,25 +1711,25 @@ export default function App() {
                     <img 
                       src={ruxtLeader.avatar || getAgentAvatar('ruxt')} 
                       alt="RuXt Leader" 
-                      className="w-9 h-9 rounded-xl object-cover ring-2 ring-indigo-500/40 bg-slate-800"
+                      className="w-9 h-9 rounded-xl object-cover ring-2 ring-amber-400/80 dark:ring-indigo-500/40 bg-slate-100 dark:bg-slate-800"
                       onError={(e) => { e.target.src = getAgentAvatar('ruxt'); }}
                     />
-                    <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-amber-500 text-[9px] flex items-center justify-center text-slate-950 font-bold" title="Team Leader">
+                    <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-amber-500 text-[9px] flex items-center justify-center text-slate-950 font-bold shadow-xs" title="Team Leader">
                       👑
                     </span>
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1">
-                      <span className="font-bold text-white text-xs group-hover:text-indigo-300 transition truncate">{ruxtLeader.name}</span>
-                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-semibold border border-amber-500/30">LEADER</span>
+                      <span className="font-bold text-slate-900 dark:text-white text-xs group-hover:text-amber-600 dark:group-hover:text-indigo-300 transition truncate">{ruxtLeader.name}</span>
+                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300 font-semibold border border-amber-500/30">LEADER</span>
                     </div>
-                    <p className="text-[10px] text-slate-400 truncate mt-0.5">{ruxtLeader.role}</p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate mt-0.5">{ruxtLeader.role}</p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-1 shrink-0">
                   {ruxtSessions.length > 0 && (
-                    <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-slate-800/80 text-amber-300 font-mono font-bold">
+                    <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-100 dark:bg-slate-800/80 text-amber-800 dark:text-amber-300 font-mono font-bold border border-amber-200 dark:border-slate-700">
                       {ruxtSessions.length}
                     </span>
                   )}
@@ -1576,12 +1740,12 @@ export default function App() {
                       handleCreateSession('ruxt', 'RuXt Leader Orchestration');
                       setExpandedAgentHistories(prev => ({ ...prev, ruxt: true }));
                     }}
-                    className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded transition"
+                    className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-800 rounded transition"
                     title="Start fresh thread with RuXt (+)"
                   >
                     <Plus className="w-3.5 h-3.5" />
                   </button>
-                  <div className="text-slate-500 group-hover:text-slate-300">
+                  <div className="text-slate-400 dark:text-slate-500 group-hover:text-slate-700 dark:group-hover:text-slate-300">
                     {expandedAgentHistories.ruxt !== false ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
                   </div>
                 </div>
@@ -1590,7 +1754,7 @@ export default function App() {
 
             {/* RuXt Leader Chat History List directly under Leader */}
             {expandedAgentHistories.ruxt !== false && ruxtSessions.length > 0 && (
-              <div className="pl-3.5 pr-1 py-1 space-y-0.5 border-l-2 border-amber-500/40 ml-4 my-1 rounded-r-xl bg-slate-950/40 animate-in fade-in duration-150">
+              <div className="pl-3.5 pr-1 py-1 space-y-0.5 border-l-2 border-amber-500/50 ml-4 my-1 rounded-r-xl bg-amber-50/50 dark:bg-slate-950/40 animate-in fade-in duration-150">
                 {ruxtSessions.map(sess => {
                   const isSessActive = activeSession?.id === sess.id && activeTab === 'chat';
                   return (
@@ -1604,13 +1768,13 @@ export default function App() {
                       }}
                       className={`group flex items-center justify-between px-2 py-1 rounded-lg text-xs cursor-pointer transition ${
                         isSessActive
-                          ? 'bg-amber-500/20 text-amber-200 border border-amber-500/30 font-medium'
-                          : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                          ? 'bg-amber-500/20 text-amber-900 dark:text-amber-200 border border-amber-500/30 font-medium shadow-xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-amber-100/40 dark:hover:bg-slate-800/50'
                       }`}
                       title={sess.title}
                     >
                       <div className="flex items-center gap-1.5 min-w-0 flex-1 pr-1">
-                        <MessageSquare className="w-2.5 h-2.5 text-amber-400 shrink-0 opacity-80" />
+                        <MessageSquare className="w-2.5 h-2.5 text-amber-500 shrink-0 opacity-80" />
                         <span className="truncate text-[10px] leading-tight">{sess.title}</span>
                       </div>
                       <button
@@ -1619,7 +1783,7 @@ export default function App() {
                           e.stopPropagation();
                           handleDeleteSession(sess.id, e);
                         }}
-                        className="opacity-0 group-hover:opacity-100 p-0.5 text-slate-500 hover:text-rose-400 transition shrink-0"
+                        className="opacity-0 group-hover:opacity-100 p-0.5 text-slate-400 hover:text-rose-500 transition shrink-0"
                         title="Delete thread"
                       >
                         <Trash2 className="w-3 h-3" />
@@ -1648,7 +1812,7 @@ export default function App() {
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all ${
                 activeTab === 'chat' && !selectedAgentUi
                   ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
               }`}
             >
               <MessageSquare className="w-4 h-4" />
@@ -1657,21 +1821,34 @@ export default function App() {
 
             {/* Collapsible Agents Section (5 specialist agents default, with View More / Less) */}
             <div className="pt-1.5 pb-1">
-              <button
-                onClick={() => setIsAgentsOpen(!isAgentsOpen)}
-                className="w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800/50 transition group"
-              >
-                <div className="flex items-center gap-2">
-                  <Bot className="w-3.5 h-3.5 text-indigo-400" />
-                  <span>Agents</span>
-                  <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-slate-800 text-slate-400 font-mono">
+              <div className="w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/50 transition group">
+                <button
+                  type="button"
+                  onClick={() => setIsAgentsOpen(!isAgentsOpen)}
+                  className="flex items-center gap-2 flex-1 text-left"
+                >
+                  <Bot className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
+                  <span className="font-bold text-slate-700 dark:text-slate-300">Agents</span>
+                  <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-400 font-mono font-bold">
                     {specialistAgents.length}
                   </span>
-                </div>
-                <div className="text-slate-500 group-hover:text-slate-300">
-                  {isAgentsOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                </div>
-              </button>
+                  <span className="text-slate-400 dark:text-slate-500 group-hover:text-slate-700 dark:group-hover:text-slate-300 ml-auto mr-1">
+                    {isAgentsOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setAgentToEdit(null);
+                    setIsAgentStudioOpen(true);
+                  }}
+                  className="p-1 rounded-md text-slate-400 hover:text-indigo-600 dark:hover:text-white hover:bg-indigo-50 dark:hover:bg-indigo-600/30 transition"
+                  title="Build New Agent (Studio)"
+                >
+                  <Plus className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
+                </button>
+              </div>
 
               {/* Collapsible List */}
               {isAgentsOpen && (
@@ -1694,8 +1871,8 @@ export default function App() {
                           }}
                           className={`group w-full flex items-center justify-between px-2 py-1.5 rounded-xl text-xs transition-all cursor-pointer ${
                             isCurrent && activeTab === 'chat'
-                              ? 'bg-indigo-600/30 text-white border border-indigo-500/40 shadow-sm'
-                              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                              ? 'bg-indigo-600/15 dark:bg-indigo-600/30 text-indigo-900 dark:text-white border border-indigo-400/40 dark:border-indigo-500/40 shadow-xs font-medium'
+                              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
                           }`}
                           title={`Click to chat with ${agent.name} (${agent.role})`}
                         >
@@ -1704,21 +1881,30 @@ export default function App() {
                               <img
                                 src={agent.avatar || getAgentAvatar(agent.slug)}
                                 alt={agent.name}
-                                className="w-5 h-5 rounded-md object-cover bg-slate-800 ring-1 ring-slate-700"
-                                onError={(e) => { e.target.src = getAgentAvatar(agent.slug); }}
+                                className="w-5 h-5 rounded-md object-cover bg-slate-100 dark:bg-slate-800 ring-1 ring-slate-200 dark:ring-slate-700"
+                                onError={(e) => {
+                                  if (!e.currentTarget.src.includes('ruxt-logo.png')) {
+                                    e.currentTarget.src = '/ruxt-logo.png';
+                                  }
+                                }}
                               />
                             </div>
                             <div className="min-w-0 flex-1 text-left">
-                              <div className="font-semibold text-white text-[11px] truncate flex items-center gap-1">
-                                {agent.name}
+                              <div className="font-semibold text-slate-800 dark:text-white text-[11px] truncate flex items-center gap-1">
+                                <span>{agent.name}</span>
+                                {agent.uiEntry && (
+                                  <span className="text-[8px] px-1 py-0.2 rounded bg-pink-500/20 text-pink-600 dark:text-pink-300 font-bold border border-pink-500/30">
+                                    UI
+                                  </span>
+                                )}
                               </div>
-                              <div className="text-[9px] text-slate-500 truncate leading-none">{agent.role}</div>
+                              <div className="text-[9px] text-slate-500 dark:text-slate-400 truncate leading-none">{agent.role}</div>
                             </div>
                           </div>
 
                           <div className="flex items-center gap-1 shrink-0">
                             {agentSessions.length > 0 && (
-                              <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-slate-800 text-indigo-300 font-mono font-medium">
+                              <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-indigo-300 font-mono font-medium">
                                 {agentSessions.length}
                               </span>
                             )}
@@ -1729,18 +1915,31 @@ export default function App() {
                                 handleCreateSession(agent.slug, `Chat with ${agent.name}`);
                                 setExpandedAgentHistories(prev => ({ ...prev, [agent.slug]: true }));
                               }}
-                              className="opacity-0 group-hover:opacity-100 p-0.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition"
+                              className="opacity-0 group-hover:opacity-100 p-0.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition"
                               title={`Start fresh thread with ${agent.name} (+)`}
                             >
                               <Plus className="w-3 h-3" />
                             </button>
+                            {agent.slug !== 'ruxt' && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenEditAgent(agent);
+                                }}
+                                className="opacity-0 group-hover:opacity-100 p-0.5 text-slate-500 dark:text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition"
+                                title={`Skill Up & edit ${agent.name}`}
+                              >
+                                <Sparkles className="w-3 h-3 text-amber-500 dark:text-amber-400" />
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setExpandedAgentHistories(prev => ({ ...prev, [agent.slug]: !prev[agent.slug] }));
                               }}
-                              className="p-0.5 text-slate-500 hover:text-slate-300 transition"
+                              className="p-0.5 text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition"
                               title="Toggle chat history"
                             >
                               {isHistoryExpanded && agentSessions.length > 0 ? (
@@ -1754,7 +1953,7 @@ export default function App() {
 
                         {/* Agent Chat History List directly under Agent */}
                         {isHistoryExpanded && agentSessions.length > 0 && (
-                          <div className="pl-4 pr-1 py-1 space-y-0.5 border-l-2 border-indigo-500/40 ml-4 my-0.5 rounded-r-xl bg-slate-950/40 animate-in fade-in duration-150">
+                          <div className="pl-4 pr-1 py-1 space-y-0.5 border-l-2 border-indigo-400 dark:border-indigo-500/40 ml-4 my-0.5 rounded-r-xl bg-indigo-50/50 dark:bg-slate-950/40 animate-in fade-in duration-150">
                             {agentSessions.map(sess => {
                               const isSessActive = activeSession?.id === sess.id && activeTab === 'chat';
                               return (
@@ -1768,13 +1967,13 @@ export default function App() {
                                   }}
                                   className={`group flex items-center justify-between px-2 py-1 rounded-lg text-xs cursor-pointer transition ${
                                     isSessActive
-                                      ? 'bg-indigo-600/30 text-indigo-200 border border-indigo-500/30 font-medium'
-                                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                                      ? 'bg-indigo-500/20 text-indigo-900 dark:text-indigo-200 border border-indigo-500/30 font-medium'
+                                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-indigo-100/50 dark:hover:bg-slate-800/50'
                                   }`}
                                   title={sess.title}
                                 >
                                   <div className="flex items-center gap-1.5 min-w-0 flex-1 pr-1">
-                                    <MessageSquare className="w-2.5 h-2.5 text-indigo-400 shrink-0 opacity-70" />
+                                    <MessageSquare className="w-2.5 h-2.5 text-indigo-500 dark:text-indigo-400 shrink-0 opacity-80" />
                                     <span className="truncate text-[10px] leading-tight">{sess.title}</span>
                                   </div>
                                   <button
@@ -1783,7 +1982,7 @@ export default function App() {
                                       e.stopPropagation();
                                       handleDeleteSession(sess.id, e);
                                     }}
-                                    className="opacity-0 group-hover:opacity-100 p-0.5 text-slate-500 hover:text-rose-400 transition shrink-0"
+                                    className="opacity-0 group-hover:opacity-100 p-0.5 text-slate-400 hover:text-rose-500 transition shrink-0"
                                     title="Delete thread"
                                   >
                                     <Trash2 className="w-3 h-3" />
@@ -1814,8 +2013,8 @@ export default function App() {
             <div className="pt-1.5 pb-1">
               <div className="flex items-center justify-between px-3 py-1.5">
                 <div className="flex items-center gap-2">
-                  <Users className="w-3.5 h-3.5 text-indigo-400" />
-                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  <Users className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
+                  <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     MY TEAMS ({customTeams.length})
                   </span>
                 </div>
@@ -1825,7 +2024,7 @@ export default function App() {
                     setIsCreateTeamOpen(true);
                   }}
                   title="Create New Team (+)"
-                  className="w-6 h-6 rounded-lg bg-slate-800/80 hover:bg-indigo-600 hover:text-white text-slate-300 flex items-center justify-center transition border border-slate-700/80 hover:border-indigo-500 shadow-sm"
+                  className="w-6 h-6 rounded-lg bg-slate-100 dark:bg-slate-800/80 hover:bg-indigo-600 hover:text-white text-slate-600 dark:text-slate-300 flex items-center justify-center transition border border-slate-200 dark:border-slate-700/80 hover:border-indigo-500 shadow-xs"
                 >
                   <Plus className="w-3.5 h-3.5" />
                 </button>
@@ -1836,7 +2035,7 @@ export default function App() {
                 {customTeams.length === 0 ? (
                   <div
                     onClick={() => setIsCreateTeamOpen(true)}
-                    className="px-2.5 py-2 rounded-xl border border-dashed border-slate-800 hover:border-indigo-500/50 text-slate-500 hover:text-slate-300 text-[11px] text-center cursor-pointer transition"
+                    className="px-2.5 py-2 rounded-xl border border-dashed border-slate-300 dark:border-slate-800 hover:border-indigo-500/50 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 text-[11px] text-center cursor-pointer transition"
                   >
                     + Click to create your first team
                   </div>
@@ -1845,32 +2044,34 @@ export default function App() {
                     const isExpanded = !!expandedTeams[team.id];
                     const teamSpecialists = (team.agentSlugs || []).filter(s => s !== 'ruxt');
                     return (
-                      <div key={team.id} className="rounded-xl overflow-hidden border border-transparent hover:border-slate-800/80 transition">
+                      <div key={team.id} className="rounded-xl overflow-hidden border border-transparent hover:border-slate-200 dark:hover:border-slate-800/80 transition">
                         {/* Team Header Row */}
                         <div
                           onClick={() => toggleExpandTeam(team.id)}
                           className={`group flex items-center justify-between px-2.5 py-1.5 rounded-xl cursor-pointer transition text-xs ${
-                            isExpanded ? 'bg-slate-800/60 text-white' : 'hover:bg-slate-800/40 text-slate-300'
+                            isExpanded 
+                              ? 'bg-indigo-50 dark:bg-slate-800/60 text-indigo-900 dark:text-white border border-indigo-200/80 dark:border-slate-700/60 shadow-xs' 
+                              : 'hover:bg-slate-100 dark:hover:bg-slate-800/40 text-slate-700 dark:text-slate-300'
                           }`}
                           title={`Click to view agents in ${team.title}`}
                         >
                           <div className="flex items-center gap-2 min-w-0">
                             {isExpanded ? (
-                              <ChevronDown className="w-3.5 h-3.5 text-indigo-400 shrink-0 transition" />
+                              <ChevronDown className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0 transition" />
                             ) : (
-                              <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-slate-300 shrink-0 transition" />
+                              <ChevronRight className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300 shrink-0 transition" />
                             )}
-                            <div className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+                            <div className="w-2 h-2 rounded-full bg-emerald-500 dark:bg-emerald-400 shrink-0" />
                             <span className="font-semibold text-[11px] truncate">{team.title}</span>
                           </div>
 
                           <div className="flex items-center gap-1.5 shrink-0">
-                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 font-mono font-bold">
+                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-500/15 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 font-mono font-bold border border-indigo-200 dark:border-indigo-500/30">
                               {teamSpecialists.length}
                             </span>
                             <button
                               onClick={(e) => promptDeleteTeam(team, e)}
-                              className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition"
+                              className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition"
                               title="Delete squad"
                             >
                               <Trash2 className="w-3 h-3" />
@@ -1880,14 +2081,14 @@ export default function App() {
 
                         {/* Expanded Agent List for this Team */}
                         {isExpanded && (
-                          <div className="pl-3 pr-1 py-1 space-y-1 bg-slate-950/50 border-l-2 border-indigo-500/40 ml-3 my-1 rounded-r-xl animate-in fade-in duration-150">
+                          <div className="pl-3 pr-1 py-1 space-y-1 bg-indigo-50/40 dark:bg-slate-950/50 border-l-2 border-indigo-500/40 ml-3 my-1 rounded-r-xl animate-in fade-in duration-150">
                             {/* Team Dispatch Button (RuXt Leader orchestrates) */}
                             <button
                               onClick={() => handleStartTeamChat(team)}
-                              className="w-full flex items-center justify-center gap-1.5 py-1 px-2 mb-1 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/35 text-indigo-300 border border-indigo-500/30 text-[10px] font-semibold transition"
+                              className="w-full flex items-center justify-center gap-1.5 py-1 px-2 mb-1 rounded-lg bg-indigo-100/70 hover:bg-indigo-100 dark:bg-indigo-600/20 dark:hover:bg-indigo-600/35 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/30 text-[10px] font-semibold transition"
                               title="Initiate group dispatch chat session with RuXt leading this squad"
                             >
-                              <MessageSquare className="w-3 h-3 text-indigo-400" />
+                              <MessageSquare className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
                               <span>Dispatch with RuXt Leader</span>
                             </button>
 
@@ -1906,8 +2107,8 @@ export default function App() {
                                   onClick={() => handleOpenAgentChat(agent.slug, `Chat with ${agent.name} (${team.title})`)}
                                   className={`w-full flex items-center gap-2 px-2 py-1 rounded-lg text-left transition ${
                                     isCurrent && activeTab === 'chat'
-                                      ? 'bg-indigo-600/30 text-white'
-                                      : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                                      ? 'bg-indigo-600/20 dark:bg-indigo-600/30 text-indigo-950 dark:text-white font-medium'
+                                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/50'
                                   }`}
                                   title={`${agent.name} • ${agent.role}`}
                                 >
@@ -1915,12 +2116,16 @@ export default function App() {
                                     <img
                                       src={agent.avatar || getAgentAvatar(agent.slug)}
                                       alt={agent.name}
-                                      className="w-4 h-4 rounded-md object-cover bg-slate-800 ring-1 ring-slate-700"
-                                      onError={(e) => { e.target.src = getAgentAvatar(agent.slug); }}
+                                      className="w-4 h-4 rounded-md object-cover bg-slate-100 dark:bg-slate-800 ring-1 ring-slate-300 dark:ring-slate-700"
+                                      onError={(e) => {
+                                        if (!e.currentTarget.src.includes('ruxt-logo.png')) {
+                                          e.currentTarget.src = '/ruxt-logo.png';
+                                        }
+                                      }}
                                     />
                                   </div>
                                   <div className="min-w-0 flex-1">
-                                    <div className="font-medium text-[10px] text-slate-200 truncate leading-tight">
+                                    <div className="font-medium text-[10px] text-slate-800 dark:text-slate-200 truncate leading-tight">
                                       {agent.name}
                                     </div>
                                     <div className="text-[8px] text-slate-500 truncate leading-tight">{agent.role}</div>
@@ -1942,12 +2147,12 @@ export default function App() {
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all ${
                 activeTab === 'tasks' && !selectedAgentUi
                   ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
               }`}
             >
               <CheckSquare className="w-4 h-4" />
               Orchestrated Tasks
-              <span className="ml-auto text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">
+              <span className="ml-auto text-[10px] px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono">
                 {tasks.filter(t => t.status !== 'done').length}
               </span>
             </button>
@@ -1956,50 +2161,65 @@ export default function App() {
               onClick={() => setIsBoardRoomOpen(prev => !prev)}
               className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all ${
                 isBoardRoomOpen
-                  ? 'bg-gradient-to-r from-amber-500/20 to-indigo-500/20 text-amber-300 border border-amber-500/40 shadow-md'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                  ? 'bg-gradient-to-r from-amber-500/20 to-indigo-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
               }`}
             >
               <span className="flex items-center gap-3">
-                <Users className="w-4 h-4 text-amber-400" />
+                <Users className="w-4 h-4 text-amber-500 dark:text-amber-400" />
                 Board Room
               </span>
-              <span className="flex items-center gap-1.5 text-[9px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 font-bold border border-amber-500/30">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="flex items-center gap-1.5 text-[9px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-300 font-bold border border-amber-500/30">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse" />
                 LIVE
               </span>
             </button>
           </nav>
         </div>
 
-        {/* Bottom Actions: Talent Hub Aligned Directly Above Workspace Settings */}
-        <div className="p-3 border-t border-slate-800/60 space-y-1.5">
+        {/* Bottom Actions: Talent Hub + Theme Switcher + Workspace Settings */}
+        <div className="p-3 border-t border-slate-200 dark:border-slate-800/60 space-y-1.5">
           <button
             onClick={() => { setActiveTab('marketplace'); setSelectedAgentUi(null); }}
             className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all ${
               activeTab === 'marketplace' && !selectedAgentUi
                 ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                : 'text-slate-300 hover:text-white hover:bg-slate-800/80 border border-transparent hover:border-slate-700/80'
+                : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-transparent hover:border-slate-300 dark:hover:border-slate-700/80'
             }`}
           >
             <span className="flex items-center gap-2.5">
-              <ShoppingBag className="w-4 h-4 text-pink-400" />
+              <ShoppingBag className="w-4 h-4 text-pink-500 dark:text-pink-400" />
               Talent Hub (Market)
             </span>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-300 font-bold border border-pink-500/30">
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-600 dark:text-pink-300 font-bold border border-pink-500/30">
               NEW
             </span>
           </button>
 
           <button
-            onClick={() => openSettings('overview')}
-            className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800/80 transition-all border border-transparent hover:border-slate-700/80 shadow-sm"
+            type="button"
+            onClick={toggleLightDarkTheme}
+            className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-all border border-slate-200 dark:border-slate-800/80 shadow-xs cursor-pointer"
+            title="Toggle between Clean Light and Focus Dark theme"
           >
             <span className="flex items-center gap-2.5">
-              <Settings className="w-4 h-4 text-indigo-400" />
+              {isLightMode ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-indigo-400" />}
+              <span>{isLightMode ? 'Clean Light Theme' : 'Focus Dark Theme'}</span>
+            </span>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono font-medium">
+              {isLightMode ? '☀️ Light' : '🌙 Dark'}
+            </span>
+          </button>
+
+          <button
+            onClick={() => openSettings('overview')}
+            className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-all border border-slate-200 dark:border-transparent hover:border-slate-300 dark:hover:border-slate-700/80 shadow-xs"
+          >
+            <span className="flex items-center gap-2.5">
+              <Settings className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
               Workspace Settings
             </span>
-            <span className="text-[9px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold border border-indigo-500/30">
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-600 dark:text-indigo-300 font-bold border border-indigo-500/30">
               PRO
             </span>
           </button>
@@ -2039,19 +2259,42 @@ export default function App() {
             {/* Agent Custom UI Frame View */}
           {selectedAgentUi ? (
             <div className="h-full flex flex-col bg-slate-900 rounded-2xl overflow-hidden border border-slate-800">
-              <div className="flex items-center justify-between px-4 py-2.5 bg-slate-800/80 border-b border-slate-700 text-xs text-slate-300">
-                <span className="font-medium">Rendering interface: {selectedAgentUi.uiEntry}</span>
-                <button
-                  onClick={() => setSelectedAgentUi(null)}
-                  className="px-3 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-medium"
-                >
-                  Close Frame
-                </button>
-          </div>
+              <div className="flex items-center justify-between px-4 py-2.5 bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border-b border-slate-800 text-xs text-slate-300">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-6 h-6 rounded-lg bg-pink-500/20 border border-pink-500/40 flex items-center justify-center text-pink-400">
+                    <Laptop className="w-3.5 h-3.5" />
+                  </div>
+                  <span className="font-bold text-white truncate">
+                    {selectedAgentUi.manifest?.ui?.title || `${selectedAgentUi.name} Interactive Workspace`}
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-mono hidden sm:inline">
+                    {selectedAgentUi.uiEntry}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      const iframe = document.getElementById('agent-custom-iframe');
+                      if (iframe) iframe.src = iframe.src;
+                    }}
+                    className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition"
+                    title="Reload Interface"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => setSelectedAgentUi(null)}
+                    className="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition text-xs shadow-sm shadow-indigo-600/30"
+                  >
+                    ← Back to Chat
+                  </button>
+                </div>
+              </div>
               <iframe
+                id="agent-custom-iframe"
                 src={selectedAgentUi.uiEntry}
                 title={selectedAgentUi.name}
-                className="w-full flex-1 border-0"
+                className="w-full flex-1 border-0 bg-slate-950"
               />
         </div>
           ) : activeTab === 'marketplace' ? (
@@ -2072,42 +2315,65 @@ export default function App() {
                   <p className="text-xs text-slate-300 leading-relaxed mb-4">
                     Managed and orchestrated by <strong>RuXt</strong>, your central team leader. Every specialist has a distinct human personality, standards, and skill instructions.
                   </p>
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAgentToEdit(null);
+                        setIsAgentStudioOpen(true);
+                      }}
+                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-pink-600 to-indigo-600 hover:from-pink-500 hover:to-indigo-500 text-white text-xs font-semibold transition flex items-center gap-1.5 shadow-md shadow-pink-600/30"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Build Custom Agent (Studio)
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={isImportingPackage}
+                      onClick={() => ruxtFileInputRef.current?.click()}
+                      className="px-4 py-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-white text-xs font-semibold transition flex items-center gap-1.5 border border-slate-700 shadow-md disabled:opacity-50"
+                      title="Import and install any .ruxt agent package"
+                    >
+                      <Upload className="w-3.5 h-3.5 text-indigo-400" />
+                      {isImportingPackage ? 'Importing...' : 'Import .ruxt Package'}
+                    </button>
+
                     <a
                       href="/hub"
                       target="_blank"
                       rel="noreferrer"
-                      className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition flex items-center gap-1.5 shadow-md shadow-indigo-600/30"
+                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold transition flex items-center gap-1.5"
                     >
                       <ExternalLink className="w-3.5 h-3.5" />
-                      Open Full Web Hub (Browser)
+                      Web Hub
                     </a>
-              </div>
+                  </div>
             </div>
           </div>
 
               {/* Search & Category Filter Controls */}
               <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
                 <div className="relative flex-1 w-full">
-                  <Search className="w-4 h-4 absolute left-3.5 top-3 text-slate-500" />
+                  <Search className="w-4 h-4 absolute left-3.5 top-3 text-slate-400 dark:text-slate-500" />
                   <input
                     type="text"
                     value={marketplaceSearch}
                     onChange={(e) => setMarketplaceSearch(e.target.value)}
                     placeholder="Search specialists (e.g., RuXt, Frontend, React, Tax, PHP)..."
-                    className="w-full bg-slate-900/80 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition"
+                    className="w-full bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-xl pl-10 pr-4 py-2 text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition shadow-xs"
                   />
             </div>
 
                 <div className="flex gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
-                  {['all', 'Leadership & Orchestration', 'Engineering', 'Finance & Compliance', 'Strategy & Gaming'].map((cat) => (
+                  {['all', 'Leadership & Orchestration', 'Engineering', 'Finance & Compliance', 'Strategy & Gaming', 'Custom & Community'].map((cat) => (
                     <button
                       key={cat}
                       onClick={() => setMarketplaceFilter(cat)}
                       className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition whitespace-nowrap ${
                         marketplaceFilter === cat
                           ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-                          : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                          : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-slate-800 shadow-xs'
                       }`}
                     >
                       {cat === 'all' ? 'All Roles' : cat}
@@ -2128,8 +2394,10 @@ export default function App() {
                   .map((agent) => (
                     <div
                       key={agent.slug}
-                      className={`p-5 rounded-3xl bg-slate-900/60 border transition-all flex flex-col justify-between shadow-xl group ${
-                        agent.slug === 'ruxt' ? 'border-amber-500/40 bg-gradient-to-b from-indigo-950/40 to-slate-900/80 ring-1 ring-amber-500/30' : 'border-slate-800 hover:border-indigo-500/40'
+                      className={`p-5 rounded-3xl border transition-all flex flex-col justify-between shadow-xs dark:shadow-xl group ${
+                        agent.slug === 'ruxt' 
+                          ? 'border-amber-500/40 bg-gradient-to-b from-amber-50/80 via-white to-indigo-50/40 dark:from-indigo-950/40 dark:to-slate-900/80 ring-1 ring-amber-500/30' 
+                          : 'bg-white dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-500/40'
                       }`}
                     >
                       <div>
@@ -2140,7 +2408,7 @@ export default function App() {
                               src={agent.avatar}
                               alt={agent.name}
                               onError={(e) => { e.target.src = '/ruxt-logo.png'; }}
-                              className={`w-16 h-16 rounded-2xl object-cover shadow-md bg-slate-800 ring-2 ${
+                              className={`w-16 h-16 rounded-2xl object-cover shadow-md bg-slate-100 dark:bg-slate-800 ring-2 ${
                                 agent.slug === 'ruxt' ? 'ring-amber-400/70' : 'ring-indigo-500/30 group-hover:ring-indigo-500/70'
                               } transition`}
                             />
@@ -2149,34 +2417,34 @@ export default function App() {
                                 👑
                               </span>
                             ) : (
-                              <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-slate-900" />
+                              <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white dark:border-slate-900" />
                             )}
                       </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between gap-1">
-                              <h4 className="font-bold text-white text-base truncate group-hover:text-indigo-400 transition flex items-center gap-1.5">
+                              <h4 className="font-bold text-slate-900 dark:text-white text-base truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition flex items-center gap-1.5">
                                 {agent.name}
                                 {agent.slug === 'ruxt' && (
-                                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">LEADER</span>
+                                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold border border-amber-500/30">LEADER</span>
                                 )}
                               </h4>
-                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-indigo-300 font-semibold whitespace-nowrap">
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 font-semibold whitespace-nowrap">
                                 {agent.experience}
                               </span>
                         </div>
-                            <p className="text-xs font-semibold text-indigo-400 truncate mt-0.5">
+                            <p className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 truncate mt-0.5">
                               {agent.role}
                             </p>
-                            <div className="flex items-center gap-1.5 mt-1 text-[11px] text-amber-400 font-medium">
-                              <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                            <div className="flex items-center gap-1.5 mt-1 text-[11px] text-amber-500 font-medium">
+                              <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
                               <span>{agent.rating}</span>
-                              <span className="text-slate-500">({agent.reviews} reviews)</span>
+                              <span className="text-slate-400 dark:text-slate-500">({agent.reviews} reviews)</span>
                         </div>
                       </div>
                     </div>
 
                         {/* Persona Headline */}
-                        <p className="text-xs text-slate-300 leading-relaxed mb-3 line-clamp-2">
+                        <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed mb-3 line-clamp-2">
                           "{agent.headline}"
                         </p>
 
@@ -2185,13 +2453,13 @@ export default function App() {
                           {agent.skills?.slice(0, 4).map((s) => (
                             <span
                               key={s}
-                              className="text-[10px] px-2 py-0.5 rounded-md bg-slate-800/80 text-slate-300 border border-slate-700/50"
+                              className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700/50"
                             >
                               {s}
                             </span>
                           ))}
                           {agent.skills?.length > 4 && (
-                            <span className="text-[10px] px-1.5 py-0.5 text-slate-500">
+                            <span className="text-[10px] px-1.5 py-0.5 text-slate-400 dark:text-slate-500">
                               +{agent.skills.length - 4}
                             </span>
                           )}
@@ -2199,7 +2467,7 @@ export default function App() {
                   </div>
 
                       {/* Actions */}
-                      <div className="pt-4 border-t border-slate-800/80 flex items-center gap-2">
+                      <div className="pt-4 border-t border-slate-100 dark:border-slate-800/80 flex items-center gap-2">
                         {agent.isInstalled ? (
                           <div className="flex-1 flex gap-2">
                             <button
@@ -2208,7 +2476,7 @@ export default function App() {
                             >
                               {agent.slug === 'ruxt' ? 'Command Leader' : 'Collaborate'}
                             </button>
-                            <span className="px-2.5 py-2 rounded-xl bg-slate-800/80 text-emerald-400 border border-emerald-500/30 text-xs font-semibold flex items-center justify-center">
+                            <span className="px-2.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/80 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-xs font-semibold flex items-center justify-center">
                               <Check className="w-3.5 h-3.5" />
                             </span>
                       </div>
@@ -2248,6 +2516,16 @@ export default function App() {
                         >
                           Bio
                         </button>
+
+                        {agent.isInstalled && agent.slug !== 'ruxt' && (
+                          <button
+                            onClick={() => handleOpenEditAgent(agent)}
+                            title="Skill Up & Edit Agent"
+                            className="p-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 transition flex items-center justify-center"
+                          >
+                            <Sparkles className="w-4 h-4 text-amber-400" />
+                          </button>
+                        )}
                   </div>
                 </div>
                   ))}
@@ -2544,8 +2822,11 @@ export default function App() {
             <div className="h-full w-full flex-1 flex flex-row min-h-0 overflow-hidden bg-transparent">
               {/* Main Chat Column */}
               <div className="h-full flex-1 flex flex-col min-h-0 overflow-hidden bg-transparent">
-                {/* Chat Top Identity Header (Borderless) */}
-              <div className="px-6 py-3 flex items-center justify-between shrink-0 bg-transparent">
+                {/* Chat Top Identity Header (Polished Glass Backdrop) */}
+              <div 
+                className="px-6 py-3 flex items-center justify-between shrink-0 backdrop-blur-md border-b transition-colors"
+                style={{ backgroundColor: 'var(--theme-header)', borderColor: 'var(--theme-border)' }}
+              >
                   <div className="flex items-center gap-3">
                     {currentChatAgent ? (
                       <>
@@ -2553,8 +2834,12 @@ export default function App() {
                           <img
                             src={currentChatAgent.avatar || getAgentAvatar(currentChatAgent.slug)}
                             alt={currentChatAgent.name}
-                            onError={(e) => { e.target.src = getAgentAvatar(currentChatAgent.slug); }}
-                            className={`w-8 h-8 rounded-xl object-cover bg-slate-800 ring-2 ${
+                            onError={(e) => {
+                              if (!e.currentTarget.src.includes('ruxt-logo.png')) {
+                                e.currentTarget.src = '/ruxt-logo.png';
+                              }
+                            }}
+                            className={`w-8 h-8 rounded-xl object-cover bg-slate-100 dark:bg-slate-800 ring-2 ${
                               currentChatAgent.slug === 'ruxt' ? 'ring-amber-400/80' : 'ring-indigo-500/40'
                             }`}
                           />
@@ -2563,25 +2848,25 @@ export default function App() {
                           )}
                     </div>
                         <div>
-                          <div className="font-bold text-white text-xs flex items-center gap-2">
+                          <div className="font-bold text-slate-900 dark:text-white text-xs flex items-center gap-2">
                             {currentChatAgent.name}
                             {currentChatAgent.slug === 'ruxt' && (
-                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">LEADER</span>
+                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold border border-amber-500/30">LEADER</span>
                             )}
-                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse" />
                       </div>
-                          <span className="text-[10px] text-indigo-400 font-medium">
+                          <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">
                             {currentChatAgent.role}
                           </span>
                     </div>
                       </>
                     ) : (
                       <>
-                        <div className="w-8 h-8 rounded-xl bg-indigo-600/30 flex items-center justify-center text-indigo-400">
+                        <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-600/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
                           <Bot className="w-4 h-4" />
                     </div>
                         <div>
-                          <div className="font-bold text-white text-xs">General Workspace Assistant</div>
+                          <div className="font-bold text-slate-900 dark:text-white text-xs">General Workspace Assistant</div>
                           <span className="text-[10px] text-slate-500">Autonomous Model</span>
                     </div>
                       </>
@@ -2593,48 +2878,83 @@ export default function App() {
                     {isDesktopRunning && (
                       <button
                         onClick={handleAbortActiveDesktop}
-                        className="px-3 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/35 text-red-300 border border-red-500/50 text-[10px] font-bold flex items-center gap-1.5 transition shadow-lg shadow-red-500/20 animate-pulse cursor-pointer"
+                        className="px-3 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/35 text-red-600 dark:text-red-300 border border-red-500/50 text-[10px] font-bold flex items-center gap-1.5 transition shadow-lg shadow-red-500/20 animate-pulse cursor-pointer"
                         title="Emergency Stop: Halt Vision Engine & Screen Control (ESC)"
                       >
-                        <span className="w-2 h-2 rounded-full bg-red-400 animate-ping" />
+                        <span className="w-2 h-2 rounded-full bg-red-500 dark:bg-red-400 animate-ping" />
                         <span>⏹️ Stop Vision Engine</span>
-                        <kbd className="px-1 py-0.2 bg-red-950/80 rounded border border-red-500/40 text-[9px] font-mono">ESC</kbd>
+                        <kbd className="px-1 py-0.2 bg-red-100 dark:bg-red-950/80 rounded border border-red-500/40 text-[9px] font-mono">ESC</kbd>
                       </button>
                     )}
                     <button
                       onClick={() => setIsBoardRoomOpen(prev => !prev)}
-                      className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold flex items-center gap-1.5 transition shadow-sm ${
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold flex items-center gap-1.5 transition shadow-xs ${
                         isBoardRoomOpen
-                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                          : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+                          ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40'
+                          : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
                       }`}
                       title="Open Executive Board Room Panel on the right"
                     >
-                      <Users className="w-3 h-3 text-amber-400" />
+                      <Users className="w-3 h-3 text-amber-500 dark:text-amber-400" />
                       <span>Board Room</span>
                       {boardroomTasks.length > 0 && (
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse" />
                       )}
                     </button>
+                    {currentChatAgent?.uiEntry && (
+                      <button
+                        onClick={() => setSelectedAgentUi(currentChatAgent)}
+                        className="px-2.5 py-1 rounded-lg bg-pink-500/20 hover:bg-pink-500/35 text-pink-700 dark:text-pink-300 border border-pink-500/40 text-[10px] font-bold flex items-center gap-1.5 transition shadow-xs animate-pulse cursor-pointer"
+                        title={`Open interactive UI for ${currentChatAgent.name}`}
+                      >
+                        <ExternalLink className="w-3 h-3 text-pink-500 dark:text-pink-400" />
+                        <span>Interactive UI</span>
+                      </button>
+                    )}
                     <button
                       onClick={() => handleCreateSession(activeSession?.agent_id || 'ruxt')}
-                      className="px-2.5 py-1 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 border border-indigo-500/30 text-[10px] font-semibold flex items-center gap-1.5 transition shadow-sm"
+                      className="px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-600/20 hover:bg-indigo-100 dark:hover:bg-indigo-600/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/30 text-[10px] font-semibold flex items-center gap-1.5 transition shadow-xs"
                       title="Start a fresh conversation thread with this specialist"
                     >
                       <Plus className="w-3 h-3" />
                       <span>New Chat</span>
                     </button>
+                    {currentChatAgent && currentChatAgent.slug !== 'ruxt' && (
+                      <button
+                        onClick={() => handleOpenEditAgent(currentChatAgent)}
+                        className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/30 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[10px] font-semibold flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                        title={`Skill Up & edit instructions for ${currentChatAgent.name}`}
+                      >
+                        <Sparkles className="w-3 h-3 text-amber-500 dark:text-amber-400" />
+                        <span>Skill Up</span>
+                      </button>
+                    )}
                     <span 
                       onClick={() => openSettings('models')}
-                      className="px-2.5 py-1 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/25 text-indigo-300 border border-indigo-500/20 text-[10px] font-semibold flex items-center gap-1.5 cursor-pointer transition"
+                      className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-indigo-500/10 hover:bg-slate-200 dark:hover:bg-indigo-500/25 text-slate-700 dark:text-indigo-300 border border-slate-200 dark:border-indigo-500/20 text-[10px] font-semibold flex items-center gap-1.5 cursor-pointer transition shadow-xs"
                       title="Manage Active Brain in Settings"
                     >
-                      <Zap className="w-3 h-3 text-amber-400" />
+                      <Zap className="w-3 h-3 text-amber-500 dark:text-amber-400" />
                       {PROVIDER_NAMES[settings.active_provider] || 'Gemini'}
                     </span>
-                    <span className="text-[10px] text-slate-500 font-mono hidden sm:inline">
-                      Session: {activeSession?.title || 'Active'}
-                    </span>
+                    {/* Quick Light/Dark Switcher in Header */}
+                    <button
+                      type="button"
+                      onClick={toggleLightDarkTheme}
+                      className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 text-[10px] font-semibold flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                      title={isLightMode ? 'Switch to Focus Dark Theme' : 'Switch to Clean Light Theme'}
+                    >
+                      {isLightMode ? <Sun className="w-3.5 h-3.5 text-amber-500" /> : <Moon className="w-3.5 h-3.5 text-indigo-400" />}
+                      <span className="hidden sm:inline font-mono">{isLightMode ? 'Light' : 'Dark'}</span>
+                    </button>
+                    {activeSession?.title && (
+                      <span 
+                        className="text-[10px] text-slate-500 dark:text-slate-400 font-mono hidden md:inline max-w-[130px] lg:max-w-[160px] truncate bg-slate-100 dark:bg-slate-800/80 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700/80 shadow-xs"
+                        title={activeSession.title}
+                      >
+                        {activeSession.title}
+                      </span>
+                    )}
                   </div>
             </div>
 
@@ -2645,33 +2965,37 @@ export default function App() {
                       <div className="h-full flex flex-col items-center justify-center text-center px-4 max-w-xl mx-auto py-8 select-text">
                       {/* Agent Avatar with ONLINE badge right at bottom matching reference */}
                       <div className="relative mb-4">
-                        <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-3xl overflow-hidden ring-4 ring-slate-800 shadow-2xl bg-slate-900 mx-auto">
+                        <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-3xl overflow-hidden ring-4 ring-slate-200 dark:ring-slate-800 shadow-xl bg-white dark:bg-slate-900 mx-auto">
                           <img
                             src={(currentChatAgent ? currentChatAgent.avatar : ruxtLeader.avatar) || getAgentAvatar(currentChatAgent ? currentChatAgent.slug : 'ruxt')}
                             alt={currentChatAgent ? currentChatAgent.name : 'RuXt Assistant'}
-                            onError={(e) => { e.target.src = getAgentAvatar(currentChatAgent ? currentChatAgent.slug : 'ruxt'); }}
+                            onError={(e) => {
+                              if (!e.currentTarget.src.includes('ruxt-logo.png')) {
+                                e.currentTarget.src = '/ruxt-logo.png';
+                              }
+                            }}
                             className="w-full h-full object-cover"
                           />
                         </div>
                         {/* ONLINE badge right at bottom of avatar */}
-                        <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full bg-emerald-950/90 text-emerald-400 border border-emerald-500/50 text-[9px] font-extrabold tracking-wider uppercase shadow-md flex items-center gap-1 shrink-0">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                        <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/90 text-emerald-600 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-500/50 text-[9px] font-extrabold tracking-wider uppercase shadow-xs flex items-center gap-1 shrink-0">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse" />
                           ONLINE
                         </div>
                       </div>
 
                       {/* Agent Title & Persona Subtitle */}
-                      <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight mt-1">
+                      <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight mt-1">
                         {currentChatAgent ? currentChatAgent.name : 'RuXt Assistant'}
                       </h2>
-                      <p className="text-[11px] font-bold tracking-widest uppercase text-amber-500/90 mt-1.5 font-mono">
+                      <p className="text-[11px] font-bold tracking-widest uppercase text-amber-600 dark:text-amber-500/90 mt-1.5 font-mono">
                         {currentChatAgent 
                           ? (currentChatAgent.slug === 'ruxt' ? 'PRIVATE AI CHIEF OF STAFF' : currentChatAgent.role.toUpperCase()) 
                           : 'PRIVATE AI CHIEF OF STAFF'}
                       </p>
 
                       {/* Description / Quote Paragraph */}
-                      <p className="text-xs sm:text-sm text-slate-300 leading-relaxed max-w-lg mt-3.5 opacity-90 font-normal">
+                      <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed max-w-lg mt-3.5 opacity-90 font-normal">
                         &ldquo;{currentChatAgent 
                           ? (currentChatAgent.description || 'Hello! I am your private AI partner and Chief of Staff. Ask me anything in any language. I can break down projects, delegate to specialist executives, track tasks, and optimize your business.')
                           : 'Hello! I am your private AI partner and Chief of Staff. Ask me anything in any language. I can break down projects, delegate to specialist executives, track tasks, and optimize your business.'
@@ -2701,14 +3025,14 @@ export default function App() {
                             key={m.id || mIdx}
                             className="group flex flex-col items-end w-full animate-in fade-in duration-200"
                           >
-                            <div className="flex items-center gap-2 mb-1 px-1 text-[10px] text-slate-500 font-mono">
+                            <div className="flex items-center gap-2 mb-1 px-1 text-[10px] text-slate-400 dark:text-slate-500 font-mono">
                               <button
                                 type="button"
                                 onClick={() => {
                                   navigator.clipboard.writeText(m.content);
                                   showNotification('Message copied to clipboard', 'success');
                                 }}
-                                className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+                                className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-800 transition cursor-pointer"
                                 title="Copy message"
                               >
                                 <Copy className="w-3 h-3" />
@@ -2716,10 +3040,10 @@ export default function App() {
                               {m.created_at && (
                                 <span>{new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                               )}
-                              <span className="font-semibold text-slate-400">You</span>
+                              <span className="font-semibold text-slate-600 dark:text-slate-400">You</span>
                             </div>
 
-                            <div className="max-w-[85%] rounded-2xl rounded-tr-sm px-4 sm:px-5 py-3 bg-gradient-to-br from-indigo-600 to-indigo-700 text-white shadow-md shadow-indigo-600/20 text-[13px] leading-relaxed whitespace-pre-wrap select-text">
+                            <div className="max-w-[85%] rounded-2xl rounded-tr-sm px-4 sm:px-5 py-3 bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-600/20 text-[13px] leading-relaxed whitespace-pre-wrap select-text">
                               {m.content}
                             </div>
                           </div>
@@ -2737,10 +3061,14 @@ export default function App() {
                               <img
                                 src={agentAvatar}
                                 alt={agentName}
-                                onError={(e) => { e.target.src = getAgentAvatar(msgAgent?.slug || 'ruxt'); }}
-                                className="w-8 h-8 rounded-xl object-cover ring-1 ring-slate-700 bg-slate-900 shadow"
+                                onError={(e) => {
+                                  if (!e.currentTarget.src.includes('ruxt-logo.png')) {
+                                    e.currentTarget.src = '/ruxt-logo.png';
+                                  }
+                                }}
+                                className="w-8 h-8 rounded-xl object-cover ring-1 ring-slate-200 dark:ring-slate-700 bg-white dark:bg-slate-900 shadow-xs"
                               />
-                              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-slate-950" />
+                              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-slate-950" />
                             </div>
                           </div>
 
@@ -2749,12 +3077,12 @@ export default function App() {
                             {/* Agent Header Info & Action Controls */}
                             <div className="flex items-center justify-between gap-2 mb-1.5 px-1">
                               <div className="flex items-center gap-2 min-w-0">
-                                <span className="font-bold text-xs text-white truncate">{agentName}</span>
-                                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-indigo-950/80 text-indigo-300 border border-indigo-500/30 font-medium truncate">
+                                <span className="font-bold text-xs text-slate-900 dark:text-white truncate">{agentName}</span>
+                                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/30 font-medium truncate">
                                   {agentRole}
                                 </span>
                                 {m.created_at && (
-                                  <span className="text-[10px] text-slate-500 font-mono">
+                                  <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">
                                     {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                   </span>
                                 )}
@@ -2766,7 +3094,7 @@ export default function App() {
                                   navigator.clipboard.writeText(m.content);
                                   showNotification('Response copied to clipboard', 'success');
                                 }}
-                                className="opacity-0 group-hover:opacity-100 px-2 py-0.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition flex items-center gap-1 text-[11px] cursor-pointer"
+                                className="opacity-0 group-hover:opacity-100 px-2 py-0.5 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition flex items-center gap-1 text-[11px] cursor-pointer"
                                 title="Copy complete response"
                               >
                                 <Copy className="w-3 h-3" />
@@ -2775,7 +3103,7 @@ export default function App() {
                             </div>
 
                             {/* Message Bubble with Polished Markdown Renderer */}
-                            <div className="rounded-2xl rounded-tl-sm p-4 sm:p-5 bg-slate-900/90 border border-slate-800/90 shadow-xl backdrop-blur-sm text-[13px] text-slate-200">
+                            <div className="rounded-2xl rounded-tl-sm p-4 sm:p-5 bg-white dark:bg-slate-900/90 border border-slate-200/90 dark:border-slate-800/90 shadow-md shadow-slate-200/50 dark:shadow-xl backdrop-blur-sm text-[13px] text-slate-800 dark:text-slate-200">
                               <MarkdownRenderer content={m.content} />
 
                               {/* Autonomous Live Screen Desktop Operator Card */}
@@ -2785,31 +3113,31 @@ export default function App() {
 
                             {/* Inter-Agent Delegation & Consultation Banner Trigger */}
                             {meta?.dispatch && (
-                              <div className="mt-4 p-3.5 rounded-2xl bg-gradient-to-r from-slate-950 via-indigo-950/40 to-slate-950 border border-indigo-500/40 shadow-inner flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                              <div className="mt-4 p-3.5 rounded-2xl bg-gradient-to-r from-indigo-50/70 via-sky-50/60 to-indigo-50/70 dark:from-slate-950 dark:via-indigo-950/40 dark:to-slate-950 border border-indigo-200 dark:border-indigo-500/40 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                                 <div className="flex items-center gap-3 min-w-0">
                                   <div className="flex -space-x-2 shrink-0">
                                     <img
                                       src={getAgentAvatar('ruxt')}
                                       alt="RuXt"
-                                      className="w-8 h-8 rounded-full ring-2 ring-amber-500/80 bg-slate-900 object-cover shadow-sm"
+                                      className="w-8 h-8 rounded-full ring-2 ring-amber-500/80 bg-slate-100 dark:bg-slate-900 object-cover shadow-sm"
                                     />
                                     <img
                                       src={meta.dispatch.specialistAvatar || getAgentAvatar(meta.dispatch.specialistSlug || 'julian-vance')}
                                       alt={meta.dispatch.specialistName}
-                                      className="w-8 h-8 rounded-full ring-2 ring-emerald-500/80 bg-slate-900 object-cover shadow-sm"
+                                      className="w-8 h-8 rounded-full ring-2 ring-emerald-500/80 bg-slate-100 dark:bg-slate-900 object-cover shadow-sm"
                                     />
                                   </div>
                                   <div className="min-w-0">
                                     <div className="flex items-center gap-2">
-                                      <span className="text-xs font-bold text-white truncate">
+                                      <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
                                         RuXt ⇄ {meta.dispatch.specialistName}
                                       </span>
-                                      <span className="text-[9px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-semibold border border-emerald-500/30 flex items-center gap-1">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                      <span className="text-[9px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-semibold border border-emerald-500/30 flex items-center gap-1">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse" />
                                         Consensus Reached
                                       </span>
                                     </div>
-                                    <p className="text-[10px] text-slate-400 truncate mt-0.5">
+                                    <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
                                       {meta.dispatch.decision || 'Specialist consultation & architectural consensus completed.'}
                                     </p>
                                   </div>
@@ -2819,9 +3147,9 @@ export default function App() {
                                   <button
                                     type="button"
                                     onClick={() => setActiveSubChatPopup(meta.dispatch)}
-                                    className="flex-1 sm:flex-none px-3.5 py-1.5 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 hover:text-white border border-indigo-500/40 text-xs font-semibold flex items-center justify-center gap-1.5 transition shadow-sm hover:scale-[1.02]"
+                                    className="flex-1 sm:flex-none px-3.5 py-1.5 rounded-xl bg-indigo-100 hover:bg-indigo-200 dark:bg-indigo-600/30 dark:hover:bg-indigo-600/50 text-indigo-800 dark:text-indigo-200 hover:text-indigo-950 dark:hover:text-white border border-indigo-200 dark:border-indigo-500/40 text-xs font-semibold flex items-center justify-center gap-1.5 transition shadow-xs hover:scale-[1.02]"
                                   >
-                                    <MessageSquare className="w-3.5 h-3.5 text-indigo-400" />
+                                    <MessageSquare className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                                     <span>View Discussion (Right Panel ↗)</span>
                                   </button>
 
@@ -2929,24 +3257,24 @@ export default function App() {
                 <div className="max-w-5xl mx-auto w-full">
                   {/* Floating Modern Input Section (Matching User Reference Image) */}
                   <div className="p-4 sm:p-5 pt-0">
-                  <div className="bg-slate-900/90 rounded-3xl border border-slate-800 shadow-2xl p-3.5 backdrop-blur transition-all focus-within:border-indigo-500/60 focus-within:ring-2 focus-within:ring-indigo-500/20">
+                  <div className="bg-white dark:bg-slate-900/90 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xl dark:shadow-2xl p-3.5 backdrop-blur transition-all focus-within:border-indigo-500/60 focus-within:ring-2 focus-within:ring-indigo-500/20">
                     
                     {/* Attached Files Preview Bar (if any) */}
                     {attachedFiles.length > 0 && (
-                      <div className="flex flex-wrap gap-2 mb-2.5 pb-2 border-b border-slate-800/80">
+                      <div className="flex flex-wrap gap-2 mb-2.5 pb-2 border-b border-slate-200 dark:border-slate-800/80">
                         {attachedFiles.map(file => (
-                          <div key={file.id} className="flex items-center gap-2 pl-2 pr-1.5 py-1 rounded-xl bg-slate-800/80 border border-slate-700 text-xs text-slate-200">
+                          <div key={file.id} className="flex items-center gap-2 pl-2 pr-1.5 py-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-slate-200">
                             {file.type?.startsWith('image/') ? (
                               <img src={file.dataUrl} alt={file.name} className="w-5 h-5 rounded object-cover" />
                             ) : (
-                              <Paperclip className="w-3.5 h-3.5 text-indigo-400" />
+                              <Paperclip className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
                             )}
                             <span className="max-w-[140px] truncate text-[11px] font-medium">{file.name}</span>
-                            <span className="text-[9px] text-slate-500 font-mono">({file.size})</span>
+                            <span className="text-[9px] text-slate-400 dark:text-slate-500 font-mono">({file.size})</span>
                             <button
                               type="button"
                               onClick={() => setAttachedFiles(prev => prev.filter(f => f.id !== file.id))}
-                              className="p-0.5 hover:text-rose-400 text-slate-400 rounded transition"
+                              className="p-0.5 hover:text-rose-500 text-slate-400 rounded transition"
                               title="Remove file"
                             >
                               <X className="w-3 h-3" />
@@ -2969,7 +3297,7 @@ export default function App() {
                       }}
                       onPaste={handlePasteClipboard}
                       placeholder="Ask anything, @ to mention, / for actions"
-                      className="w-full bg-transparent border-0 text-white placeholder-slate-500 text-xs sm:text-sm focus:outline-none resize-none leading-relaxed"
+                      className="w-full bg-transparent border-0 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-xs sm:text-sm focus:outline-none resize-none leading-relaxed"
                     />
 
                     {/* Hidden File Picker Input */}
@@ -2982,7 +3310,7 @@ export default function App() {
                     />
 
                     {/* Bottom Controls Row inside Input Box */}
-                    <div className="flex items-center justify-between pt-2.5 mt-1 border-t border-slate-800/60 flex-wrap gap-2">
+                    <div className="flex items-center justify-between pt-2.5 mt-1 border-t border-slate-100 dark:border-slate-800/60 flex-wrap gap-2">
                       
                       {/* Left Controls: Plus Attachment Button */}
                       <div className="flex items-center gap-1.5 sm:gap-2">
@@ -2990,14 +3318,14 @@ export default function App() {
                         <button
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
-                          className="w-7 h-7 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 hover:text-white flex items-center justify-center transition border border-slate-700/60 shadow-sm"
+                          className="w-7 h-7 rounded-xl bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700/80 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex items-center justify-center transition border border-slate-200 dark:border-slate-700/60 shadow-xs"
                           title="Attach file, document, or screenshot (+)"
                         >
                           <Plus className="w-4 h-4" />
                         </button>
                       </div>
 
-                      {/* Right Controls: Turbo Toggle + Mic Voice Dictation + Circular Dark Green Arrow Send Button */}
+                      {/* Right Controls: Turbo Toggle + Mic Voice Dictation + Circular Green Arrow Send Button */}
                       <div className="flex items-center gap-2">
                         
                         {/* Turbo Toggle Pill */}
@@ -3009,15 +3337,15 @@ export default function App() {
                           }}
                           className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-semibold border transition ${
                             isTurboEnabled
-                              ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm shadow-amber-500/20'
-                              : 'bg-slate-800/60 text-slate-400 hover:text-slate-200 border-slate-700/60'
+                              ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/50 shadow-xs'
+                              : 'bg-slate-100 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 border-slate-200 dark:border-slate-700/60'
                           }`}
                           title="Toggle Turbo ultra-fast reasoning mode"
                         >
-                          <Zap className={`w-3.5 h-3.5 ${isTurboEnabled ? 'text-amber-400 fill-amber-400' : 'text-slate-500'}`} />
+                          <Zap className={`w-3.5 h-3.5 ${isTurboEnabled ? 'text-amber-500 dark:text-amber-400 fill-amber-400' : 'text-slate-400 dark:text-slate-500'}`} />
                           <span>Turbo</span>
                           <span className={`text-[9px] px-1 py-0.2 rounded font-mono ${
-                            isTurboEnabled ? 'bg-amber-500/30 text-amber-200 font-bold' : 'bg-slate-700/60 text-slate-400'
+                            isTurboEnabled ? 'bg-amber-500/30 text-amber-800 dark:text-amber-200 font-bold' : 'bg-slate-200 dark:bg-slate-700/60 text-slate-600 dark:text-slate-400'
                           }`}>
                             {isTurboEnabled ? 'ON' : 'OFF'}
                           </span>
@@ -3030,22 +3358,22 @@ export default function App() {
                           className={`w-8 h-8 rounded-full flex items-center justify-center transition border ${
                             isRecordingVoice
                               ? 'bg-rose-600 text-white border-rose-400 animate-pulse shadow-md shadow-rose-600/40'
-                              : 'bg-slate-800/80 hover:bg-slate-700/80 text-slate-400 hover:text-white border-slate-700/60'
+                              : 'bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700/80 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border-slate-200 dark:border-slate-700/60'
                           }`}
                           title={isRecordingVoice ? 'Listening... Click to stop voice dictation' : 'Voice input (Speech to text)'}
                         >
                           <Mic className="w-4 h-4" />
                         </button>
 
-                        {/* Circular Dark Green Upward Arrow Send Button matching reference */}
+                        {/* Circular Green Upward Arrow Send Button */}
                         <button
                           type="button"
                           onClick={handleSendMessage}
                           disabled={loadingMessage || (!inputMessage.trim() && attachedFiles.length === 0)}
                           className={`w-8 h-8 rounded-full flex items-center justify-center transition shadow-md ${
                             loadingMessage || (!inputMessage.trim() && attachedFiles.length === 0)
-                              ? 'bg-slate-800 text-slate-600 cursor-not-allowed border border-slate-700/40'
-                              : 'bg-emerald-950 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-500/60 shadow-emerald-950/40 transform hover:scale-105 active:scale-95'
+                              ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed border border-slate-200 dark:border-slate-700/40'
+                              : 'bg-emerald-600 hover:bg-emerald-500 text-white dark:bg-emerald-950 dark:hover:bg-emerald-600 dark:text-emerald-400 dark:hover:text-white border border-emerald-500/60 shadow-emerald-500/20 transform hover:scale-105 active:scale-95'
                           }`}
                           title="Send message (Enter)"
                         >
@@ -3060,14 +3388,14 @@ export default function App() {
                   </div>
 
                   {/* Caption / Helper Info Below Input Box */}
-                  <div className="flex items-center justify-between px-3 mt-2 text-[11px] text-slate-500">
-                    <div className="flex items-center gap-1.5 text-slate-400">
-                      <Sparkles className="w-3.5 h-3.5 text-amber-400/80" />
+                  <div className="flex items-center justify-between px-3 mt-2 text-[11px]">
+                    <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400/80" />
                       <span>Voice & text, drag-and-drop & screenshot paste (Ctrl+V)</span>
                     </div>
-                    <div className="flex items-center gap-1 text-slate-500 text-[10px]">
+                    <div className="flex items-center gap-1 text-slate-500 dark:text-slate-400 text-[10px]">
                       <span>Press</span>
-                      <kbd className="px-1.5 py-0.5 rounded bg-slate-800/80 border border-slate-700 text-slate-300 font-mono text-[9px] shadow-sm">
+                      <kbd className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-mono text-[9px] shadow-xs">
                         Enter
                       </kbd>
                       <span>to send</span>
@@ -3079,27 +3407,33 @@ export default function App() {
 
               {/* Right-Side Popup / Drawer for Inter-Agent Sub-Conversation */}
               {activeSubChatPopup && (
-                <div className="w-[360px] sm:w-[420px] lg:w-[460px] h-full border-l border-slate-800/90 bg-slate-950/95 backdrop-blur-xl flex flex-col shrink-0 z-20 shadow-2xl animate-in slide-in-from-right duration-200">
+                <div 
+                  className="w-[360px] sm:w-[420px] lg:w-[460px] h-full border-l backdrop-blur-xl flex flex-col shrink-0 z-20 shadow-2xl animate-in slide-in-from-right duration-200"
+                  style={{ backgroundColor: 'var(--theme-card)', borderColor: 'var(--theme-border)' }}
+                >
                   {/* Header */}
-                  <div className="p-4 border-b border-slate-800/90 flex items-center justify-between shrink-0 bg-slate-900/60">
+                  <div 
+                    className="p-4 border-b flex items-center justify-between shrink-0"
+                    style={{ backgroundColor: 'var(--theme-header)', borderColor: 'var(--theme-border)' }}
+                  >
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="flex -space-x-2 shrink-0">
                         <img
                           src={getAgentAvatar('ruxt')}
                           alt="RuXt"
-                          className="w-8 h-8 rounded-full ring-2 ring-amber-500/80 bg-slate-900 object-cover shadow-sm"
+                          className="w-8 h-8 rounded-full ring-2 ring-amber-500/80 bg-slate-100 dark:bg-slate-900 object-cover shadow-sm"
                         />
                         <img
                           src={activeSubChatPopup.specialistAvatar || getAgentAvatar(activeSubChatPopup.specialistSlug || 'julian-vance')}
                           alt={activeSubChatPopup.specialistName}
-                          className="w-8 h-8 rounded-full ring-2 ring-emerald-500/80 bg-slate-900 object-cover shadow-sm"
+                          className="w-8 h-8 rounded-full ring-2 ring-emerald-500/80 bg-slate-100 dark:bg-slate-900 object-cover shadow-sm"
                         />
                       </div>
                       <div className="min-w-0">
-                        <h3 className="font-bold text-white text-xs flex items-center gap-1.5 truncate">
+                        <h3 className="font-bold text-slate-900 dark:text-white text-xs flex items-center gap-1.5 truncate">
                           <span>RuXt ⇄ {activeSubChatPopup.specialistName}</span>
                         </h3>
-                        <span className="text-[10px] text-indigo-400 font-medium truncate block">
+                        <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium truncate block">
                           {activeSubChatPopup.specialistRole || 'Executive Specialist'}
                         </span>
                       </div>
@@ -3108,7 +3442,7 @@ export default function App() {
                     <div className="flex items-center gap-1.5">
                       <button
                         onClick={() => setActiveSubChatPopup(null)}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition"
                         title="Close Discussion Panel"
                       >
                         <X className="w-4 h-4" />
@@ -3118,12 +3452,12 @@ export default function App() {
 
                   {/* Decision Banner Callout */}
                   {activeSubChatPopup.decision && (
-                    <div className="m-3 p-3.5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-emerald-500/10 border border-amber-500/30 text-xs text-amber-200 shadow-sm">
-                      <div className="flex items-center gap-1.5 font-bold text-amber-300 text-[11px] mb-1">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-amber-400" />
+                    <div className="m-3 p-3.5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-emerald-500/10 border border-amber-500/30 text-xs text-amber-900 dark:text-amber-200 shadow-xs">
+                      <div className="flex items-center gap-1.5 font-bold text-amber-700 dark:text-amber-300 text-[11px] mb-1">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
                         <span>Agreed Decision & Action Plan</span>
                       </div>
-                      <p className="text-[11px] text-slate-300 leading-relaxed font-normal">
+                      <p className="text-[11px] text-slate-700 dark:text-slate-300 leading-relaxed font-normal">
                         {activeSubChatPopup.decision}
                       </p>
                     </div>
@@ -3131,10 +3465,10 @@ export default function App() {
 
                   {/* Scrollable Conversation Stream */}
                   <div className="flex-1 overflow-y-auto p-4 space-y-3.5">
-                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center my-1 flex items-center justify-center gap-2">
-                      <span className="h-px w-8 bg-slate-800" />
+                    <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest text-center my-1 flex items-center justify-center gap-2">
+                      <span className="h-px w-8 bg-slate-200 dark:bg-slate-800" />
                       <span>Inter-Agent Deliberation</span>
-                      <span className="h-px w-8 bg-slate-800" />
+                      <span className="h-px w-8 bg-slate-200 dark:bg-slate-800" />
                     </div>
 
                     {activeSubChatPopup.subChat && activeSubChatPopup.subChat.map((msg, idx) => {
@@ -3148,8 +3482,8 @@ export default function App() {
                           key={idx}
                           className={`p-3.5 rounded-2xl border transition ${
                             isFromRuxt
-                              ? 'bg-slate-900/90 border-amber-500/30 shadow-sm'
-                              : 'bg-indigo-950/40 border-indigo-500/30 shadow-sm'
+                              ? 'bg-amber-50/60 dark:bg-slate-900/90 border-amber-300 dark:border-amber-500/30 text-slate-800 dark:text-slate-200 shadow-xs'
+                              : 'bg-indigo-50/60 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-500/30 text-slate-800 dark:text-slate-200 shadow-xs'
                           }`}
                         >
                           <div className="flex items-center justify-between mb-2">
@@ -3159,16 +3493,16 @@ export default function App() {
                                 alt={msg.fromName} 
                                 className={`w-5 h-5 rounded-md object-cover ring-1 ${isFromRuxt ? 'ring-amber-400' : 'ring-indigo-400'}`} 
                               />
-                              <span className={`text-[11px] font-bold ${isFromRuxt ? 'text-amber-300' : 'text-indigo-300'}`}>
+                              <span className={`text-[11px] font-bold ${isFromRuxt ? 'text-amber-700 dark:text-amber-300' : 'text-indigo-700 dark:text-indigo-300'}`}>
                                 {msg.fromName}
                               </span>
                             </div>
-                            <span className="text-[9px] font-mono text-slate-500 px-1.5 py-0.5 rounded bg-slate-950/60 border border-slate-800">
+                            <span className="text-[9px] font-mono text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800">
                               {msg.time || 'Phase ' + (idx + 1)}
                             </span>
                           </div>
 
-                          <div className="text-xs text-slate-200 leading-relaxed whitespace-pre-wrap">
+                          <div className="text-xs text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-wrap">
                             {msg.message}
                           </div>
                         </div>
@@ -3177,7 +3511,10 @@ export default function App() {
                   </div>
 
                   {/* Footer with actions */}
-                  <div className="p-3 border-t border-slate-800/90 bg-slate-900/60 flex items-center justify-between text-xs">
+                  <div 
+                    className="p-3 border-t flex items-center justify-between text-xs"
+                    style={{ backgroundColor: 'var(--theme-header)', borderColor: 'var(--theme-border)' }}
+                  >
                     <span className="text-[10px] text-slate-400 flex items-center gap-1.5">
                       <Sparkles className="w-3.5 h-3.5 text-amber-400" />
                       Delivered to Main Chat
@@ -3777,6 +4114,33 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Hidden File Input for Importing .ruxt Packages */}
+      <input
+        type="file"
+        ref={ruxtFileInputRef}
+        accept=".ruxt,.🔰,.zip"
+        onChange={handleImportRuxtPackage}
+        className="hidden"
+      />
+
+      {/* Agent Studio Modal (Builder & Exporter) */}
+      <AgentStudioModal
+        isOpen={isAgentStudioOpen}
+        agentToEdit={agentToEdit}
+        onClose={() => {
+          setIsAgentStudioOpen(false);
+          setAgentToEdit(null);
+        }}
+        showNotification={showNotification}
+        onAgentCreated={async (newAgent) => {
+          await fetchAllData();
+          await fetchMarketplaceAgents();
+          if (newAgent?.slug) {
+            handleOpenAgentChat(newAgent.slug, `Chat with ${newAgent.name}`);
+          }
+        }}
+      />
     </div>
   );
 }

@@ -269,7 +269,8 @@ Answer the user directly, provide structured and actionable recommendations acco
       try {
         const job = await startVisionDesktopExecution({
           goal: content,
-          settings
+          settings,
+          sessionId
         });
 
         // User explicit directive: "me wage card ekak oni na bro. but pc eke screen eke task eka wena widiha live pennanna oni."

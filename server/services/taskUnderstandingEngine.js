@@ -122,7 +122,7 @@ function parseTaskSemantically(goalClean, safetyAssessment) {
   }
 
   // Application & Type Resolution
-  if (goalLower.includes('notepad') || goalLower.includes('story') || goalLower.includes('katha') || goalLower.includes('note') || goalLower.includes('write')) {
+  if (goalLower.includes('note pad') || goalLower.includes('notepad') || goalLower.includes('story') || goalLower.includes('katha') || goalLower.includes('note') || goalLower.includes('write')) {
     primaryApp = 'notepad';
     needsStoryGeneration = goalLower.includes('story') || goalLower.includes('katha') || goalLower.includes('write') || goalLower.includes('liyanna');
     

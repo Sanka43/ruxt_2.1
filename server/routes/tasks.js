@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import db from '../db.js';
 import { randomUUID } from 'crypto';
+import { discoverActiveAgents, resolveStageAgent } from '../services/orchestrator.js';
 
 const router = Router();
 
@@ -79,6 +80,55 @@ router.delete('/:id', (req, res) => {
     db.prepare('DELETE FROM tasks WHERE id = ?').run(id);
     res.json({ success: true, message: 'Task deleted' });
   } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Dynamic Multi-Stage Pipeline Planner with New Agent Identification
+router.post('/pipeline/plan', (req, res) => {
+  try {
+    const { topic, stages: customStages } = req.body || {};
+    if (!topic || !topic.trim()) {
+      return res.status(400).json({ success: false, error: 'Topic / project goal is required' });
+    }
+
+    const cleanTopic = topic.trim();
+    const activeAgents = discoverActiveAgents();
+
+    const stageTemplates = Array.isArray(customStages) && customStages.length > 0
+      ? customStages
+      : [
+          { name: 'Frontend Architecture & Responsive UI', query: 'frontend react tailwind ui ux design ' + cleanTopic },
+          { name: 'Backend API & Distributed Data Layer', query: 'backend database postgres api nodejs docker ' + cleanTopic },
+          { name: 'Domain Specialist Integration & Audit', query: 'seo traffic compliance tax strategy ' + cleanTopic },
+          { name: 'RuXt Leader QA & Acceptance Sign-off', query: 'ruxt qa verification orchestrator signoff' }
+        ];
+
+    const plannedStages = stageTemplates.map((stage, idx) => {
+      const assigned = stage.query.includes('ruxt qa')
+        ? { slug: 'ruxt', name: 'RuXt Leader', role: 'Local Engine Orchestrator' }
+        : resolveStageAgent(stage.query || stage.name, activeAgents);
+
+      return {
+        orderIndex: idx,
+        title: `[Stage ${idx + 1}] ${stage.name || stage.title}`,
+        assignedAgent: {
+          slug: assigned.slug,
+          name: assigned.name,
+          role: assigned.role
+        },
+        description: `Execute ${stage.name || stage.title} for "${cleanTopic}" with accumulated pipeline context.`
+      };
+    });
+
+    res.json({
+      success: true,
+      topic: cleanTopic,
+      availableAgentsCount: activeAgents.length,
+      stages: plannedStages
+    });
+  } catch (err) {
+    console.error('Pipeline plan error:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });

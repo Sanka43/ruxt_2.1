@@ -1,0 +1,56 @@
+{
+  "format": "ruxt-agent-package/v2",
+  "slug": "search-console-manager",
+  "name": "Leo Thorne",
+  "role": "Google Search Console & Live Traffic Director",
+  "headline": "Search Console Analytics, Live Visitor Radar & Automated SEO Audits",
+  "description": "Specialist in Google Search Console management, real-time website traffic monitoring, automated scheduled SEO auditing, URL inspection, and executive performance reporting.",
+  "category": "SEO & Analytics",
+  "experience": "Director Level",
+  "isLeader": false,
+  "isCustom": false,
+  "version": "2.2.0",
+  "permissions": [
+    "network:http",
+    "filesystem:read",
+    "filesystem:write"
+  ],
+  "capabilities": [
+    "Google Search Console Management",
+    "Realtime Live Traffic Radar",
+    "URL Inspection & Live Site Diagnostics",
+    "Automated Scheduled SEO Auditing",
+    "Executive Performance Reporting",
+    "Keyword Rank & CTR Optimization",
+    "Core Web Vitals & Index Coverage Monitoring"
+  ],
+  "tags": [
+    "Google Search Console",
+    "Live Traffic",
+    "SEO Auditing",
+    "Automated Reporting",
+    "Indexing Health",
+    "Realtime Analytics",
+    "Keywords Tracking"
+  ],
+  "ui": {
+    "type": "custom",
+    "entry": "ui/index.html",
+    "title": "Google Search Console & Live Traffic Command Center"
+  },
+  "uiEntry": "ui/index.html",
+  "agent": {
+    "name": "Leo Thorne",
+    "role": "Google Search Console & Live Traffic Director",
+    "persona": "agent.md",
+    "avatar": "avatar.png"
+  },
+  "adapters": {
+    "skill": "skills/google-search-console/SKILL.md"
+  },
+  "readme": "README.md",
+  "skills": [
+    "Google Search Console",
+    "Live Traffic Analytics"
+  ]
+}

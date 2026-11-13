@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import db from '../db.js';
-import { conductBoardroomMeeting, executeTaskStep } from '../services/orchestrator.js';
+import { conductBoardroomMeeting, executeTaskStep, runAutonomousPipeline } from '../services/orchestrator.js';
 
 const router = Router();
 
@@ -133,36 +133,41 @@ router.post('/:id/execute-next', async (req, res) => {
 router.post('/:id/execute-all', async (req, res) => {
   try {
     const { id } = req.params;
-    const executedTasks = [];
-
-    while (true) {
-      const nextTask = db.prepare(`
-        SELECT * FROM tasks 
-        WHERE boardroom_id = ? AND status != 'done' 
-        ORDER BY order_index ASC LIMIT 1
-      `).get(id);
-
-      if (!nextTask) break;
-
-      const result = await executeTaskStep({ taskId: nextTask.id });
-      executedTasks.push(result.task);
-    }
-
-    const allTasks = db.prepare('SELECT * FROM tasks WHERE boardroom_id = ? ORDER BY order_index ASC').all(id);
+    const result = await runAutonomousPipeline({ boardroomId: id });
 
     res.json({
       success: true,
-      message: `Successfully executed ${executedTasks.length} tasks to completion!`,
-      tasks: allTasks,
+      message: `Successfully executed ${result.stagesExecuted} tasks to completion!`,
+      tasks: result.tasks,
       progress: {
-        completedCount: allTasks.length,
-        totalCount: allTasks.length,
-        progressPercent: 100,
+        completedCount: result.completedCount,
+        totalCount: result.totalCount,
+        progressPercent: result.progressPercent,
         nextTask: null
       }
     });
   } catch (err) {
     console.error('Execute all steps error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 6. Autonomous continuous pipeline loop with dynamic agent handoffs
+router.post('/:id/auto-continue', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { maxStages } = req.body || {};
+    const result = await runAutonomousPipeline({ boardroomId: id, maxStages: maxStages || 10 });
+
+    res.json({
+      success: true,
+      message: result.isFullyCompleted
+        ? 'Autonomous pipeline finished all stages successfully!'
+        : `Autonomous pipeline progressed ${result.stagesExecuted} stage(s).`,
+      result
+    });
+  } catch (err) {
+    console.error('Auto continue error:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });

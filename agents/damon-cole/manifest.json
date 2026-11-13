@@ -1,0 +1,48 @@
+{
+  "format": "ruxt-agent-package/v2",
+  "slug": "damon-cole",
+  "name": "Damon Cole",
+  "role": "Lead Backend & Distributed Systems Engineer",
+  "headline": "High-throughput REST/gRPC APIs, PostgreSQL & Kafka Streaming",
+  "description": "Specialist in architecting resilient backend systems and event-driven architectures.",
+  "category": "Engineering",
+  "experience": "Specialist",
+  "isCustom": true,
+  "rating": 5,
+  "reviews": 1,
+  "version": "1.5.0",
+  "permissions": [
+    "filesystem:read",
+    "filesystem:write",
+    "terminal:exec"
+  ],
+  "skills": [
+    "Node.js",
+    "PostgreSQL",
+    "Kafka Event Streaming",
+    "Redis",
+    "Microservices",
+    "Docker   Containerization",
+    "Microservices Architecture",
+    "Node Js",
+    "Node Js   Express",
+    "Postgresql",
+    "Postgresql   Index Optimization",
+    "Problem Solver",
+    "Redis   Distributed Caching",
+    "Rest   Grpc Api Design",
+    "Task Execution"
+  ],
+  "agent": {
+    "name": "Damon Cole",
+    "role": "Lead Backend & Distributed Systems Engineer",
+    "persona": "agent.md",
+    "avatar": "avatar.png"
+  },
+  "ui": {
+    "type": "custom",
+    "entry": "ui/index.html",
+    "title": "Damon Cole Interface"
+  },
+  "uiEntry": "ui/index.html"
+}

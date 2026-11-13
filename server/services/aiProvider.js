@@ -942,6 +942,52 @@ function generateAutonomousLocalReply({
     };
   }
 
+  // 8. Leo Thorne (Google Search Console & Live Traffic Director)
+  if (currentSlug === 'search-console-manager' || currentSlug.includes('search-console') || currentSlug.includes('leo-thorne') || currentSlug.includes('gsc')) {
+    const isSinhala = /oni|karanna|balanna|puluwan|moko|kohomada|hadanna|mata|inna|dapan/i.test(lastUserPrompt);
+
+    if (isGreeting) {
+      if (isSinhala) {
+        return {
+          content: `ආයුබෝවන් bro! මම **Leo Thorne** — Google Search Console සහ Live Traffic Intelligence Director. \n\nඔබගේ live site එකේ real-time traffic එක බලන්න, Search Console metrics (Clicks, Impressions, CTR, Position), Indexing status, සහ scheduled automated SEO reports ලබාගන්න මට පුළුවන්. \n\nඋඩ තියෙන **"Interactive UI"** button එක click කරලා live command center එක launch කරගන්න පුළුවන් bro! මොකක්ද අද පරීක්ෂා කරන්න ඕනේ?`,
+          provider: 'Leo Thorne GSC Engine',
+          model: 'gsc-intelligence-v2'
+        };
+      }
+      return {
+        content: `Hello! I am **Leo Thorne**, your Google Search Console & Live Traffic Intelligence Director.\n\nI monitor real-time website traffic, manage Google Search Console indexing and query performance, track keyword rankings, and run automated scheduled audits with executive reports.\n\nClick the **"Interactive UI"** button above to open the full Live Traffic & Search Console Command Center! How can I assist with your site today?`,
+        provider: 'Leo Thorne GSC Engine',
+        model: 'gsc-intelligence-v2'
+      };
+    }
+
+    if (isSinhala) {
+      return {
+        content: `Bro, මම Google Search Console එක සහ Live Site Traffic එක විශ්ලේෂණය කරලා සම්පූර්ණ වාර්තාවක් පිළියෙල කළා!\n\n` +
+          `### 🚀 Live Traffic & Search Console Analysis:\n` +
+          `- **Real-time Live Traffic:** Live visitors radar එක හරහා active users, top pages සහ referrers real-time monitor කරන්න පුළුවන්.\n` +
+          `- **Search Performance:** Clicks, Impressions, CTR සහ Google SERP Keyword positions පෙන්වනවා.\n` +
+          `- **Automated Scheduling:** Daily හෝ Hourly schedule එකක් සකසා auto-generated executive reports ගන්න පුළුවන්.\n` +
+          `- **Live URL Inspection:** ඕනෑම URL එකක් submit කරලා HTTP latency, indexing directives සහ robots.txt instant check කරන්න පුළුවන්.\n\n` +
+          `💡 **Tip:** සම්පූර්ණ visual charts සහ live radar එක බලාගන්න උඩ තියෙන **"Interactive UI"** button එක ඔබන්න!`,
+        provider: 'Leo Thorne GSC Engine',
+        model: 'gsc-intelligence-v2'
+      };
+    }
+
+    return {
+      content: `I've analyzed the search performance telemetry and live site signals.\n\n` +
+        `### 📊 Search Console & Live Traffic Diagnostics:\n` +
+        `- **Live Visitor Radar:** Real-time active session stream, device split, and geographic attribution.\n` +
+        `- **Search Analytics Performance:** Keyword ranking velocity, CTR optimization opportunities, and search impressions.\n` +
+        `- **Crawl & Index Health:** Instant URL inspection with Googlebot simulation, canonical verification, and Core Web Vitals audit.\n` +
+        `- **Automated Scheduled Reporting:** Recurring cron-based audits delivering scheduled executive summaries.\n\n` +
+        `💡 *To launch the interactive dashboard, click **"Interactive UI"** at the top right of the chat panel.*`,
+      provider: 'Leo Thorne GSC Engine',
+      model: 'gsc-intelligence-v2'
+    };
+  }
+
   // 7. Numbers (Quantitative Data Analyst)
   if (currentSlug === 'numbers' || currentSlug.includes('number')) {
     if (isGreeting) {

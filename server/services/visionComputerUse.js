@@ -9,6 +9,7 @@ import { TaskVerificationEngine } from './taskVerificationEngine.js';
 import { ComputerObservationEngine } from './computerObservationEngine.js';
 import { TaskCompletionController, TaskLifecycleState } from './taskCompletionController.js';
 import { SafetyController } from './safetyController.js';
+import { notifyTaskOutcome } from './taskOutcomeExplainer.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -79,6 +80,15 @@ export async function focusProcess(processName) {
   return runWindowsAction(['-Action', 'focus', '-ProcessName', processName]);
 }
 
+export async function getWindowCenter(processName) {
+  const out = await runWindowsAction(['-Action', 'get_window_rect', '-ProcessName', processName]);
+  const match = out.match(/:CENTER:(\d+),(\d+)/);
+  if (match) {
+    return { x: parseInt(match[1], 10), y: parseInt(match[2], 10) };
+  }
+  return null;
+}
+
 export async function launchProcess(processName, targetArgs = '') {
   return runWindowsAction(['-Action', 'launch', '-ProcessName', processName, '-TargetArgs', targetArgs]);
 }
@@ -133,6 +143,7 @@ export function stopScreenBorder() {
 export async function startVisionDesktopExecution({
   goal,
   settings = {},
+  sessionId = null,
   onEvent = () => {}
 }) {
   const jobId = randomUUID();
@@ -141,6 +152,7 @@ export async function startVisionDesktopExecution({
 
   const jobState = {
     id: jobId,
+    sessionId,
     goal,
     taskContract: null,
     lifecycleState: TaskLifecycleState.CREATED,
@@ -182,6 +194,15 @@ export async function startVisionDesktopExecution({
           jobId,
           error: `Safety boundary violation: ${risk.reason}`
         });
+        if (sessionId) {
+          notifyTaskOutcome({
+            sessionId,
+            jobState,
+            taskContract: null,
+            finalReport: null,
+            error: new Error(`Safety boundary violation: ${risk.reason}`)
+          });
+        }
         return;
       }
 
@@ -310,8 +331,10 @@ export async function startVisionDesktopExecution({
         } else if (stepDef.action === 'paste_text') {
           await focusProcess('notepad');
           await new Promise(r => setTimeout(r, 250));
-          const edX = Math.round(screenDims.width * 0.38);
-          const edY = Math.round(screenDims.height * 0.40);
+          const targetProc = stepDef.processName || 'notepad';
+          const winCenter = await getWindowCenter(targetProc);
+          const edX = winCenter ? winCenter.x : Math.round(screenDims.width * 0.38);
+          const edY = winCenter ? winCenter.y : Math.round(screenDims.height * 0.40);
           await moveMouseSmooth(edX, edY, 280);
           await clickMouse('left');
           await new Promise(r => setTimeout(r, 150));
@@ -388,10 +411,23 @@ export async function startVisionDesktopExecution({
             // Recovery: paste content again
             completionController.transitionTo(TaskLifecycleState.RECOVERING, 'Re-pasting content into document');
             broadcast({ type: 'log', jobId, text: `[Recovery Engine] Re-pasting story into editor...` });
+            const targetProc = stepDef.processName || 'notepad';
+            const winCenter = await getWindowCenter(targetProc);
+            if (winCenter) {
+              await moveMouseSmooth(winCenter.x, winCenter.y, 200);
+              await clickMouse('left');
+              await new Promise(r => setTimeout(r, 150));
+            }
             await clipboardPasteText(taskContract.contentPayload?.generatedContent || '');
             await new Promise(r => setTimeout(r, 400));
-            completionController.recordEvidence('text_in_document', { verified: true });
-            broadcast({ type: 'log', jobId, text: `✅ [Verification Succeeded] Document text verified after recovery!` });
+            const vRetry = await TaskVerificationEngine.verifyDocumentContent({ minLength: 10 });
+            if (vRetry.verified) {
+              completionController.recordEvidence('text_in_document', vRetry);
+              broadcast({ type: 'log', jobId, text: `✅ [Verification Succeeded] Document text verified after recovery!` });
+            } else {
+              completionController.recordEvidence('text_in_document', { verified: false, reason: 'Content not detected in editor canvas' });
+              broadcast({ type: 'log', jobId, text: `⚠️ [Verification Warning] Story could not be verified inside Notepad.` });
+            }
           }
         } else if (stepDef.action === 'verify_file_exists') {
           const filePath = stepDef.filePath || taskContract.contentPayload?.saveFilePath;
@@ -454,6 +490,16 @@ export async function startVisionDesktopExecution({
             previewSummary: `Vision Agent fully completed and verified: "${goal}"`,
             report: finalReport
           });
+
+          if (sessionId) {
+            notifyTaskOutcome({
+              sessionId,
+              jobState,
+              taskContract,
+              finalReport,
+              isAborted: false
+            });
+          }
         } else {
           completionController.transitionTo(TaskLifecycleState.FAILED, finalReport.evaluation.reason);
           jobState.status = 'partial';
@@ -466,6 +512,26 @@ export async function startVisionDesktopExecution({
             previewSummary: `Task executed with partial verification. ${finalReport.evaluation.reason}`,
             report: finalReport
           });
+
+          if (sessionId) {
+            notifyTaskOutcome({
+              sessionId,
+              jobState,
+              taskContract,
+              finalReport,
+              isAborted: false
+            });
+          }
+        }
+      } else {
+        if (sessionId) {
+          notifyTaskOutcome({
+            sessionId,
+            jobState,
+            taskContract,
+            finalReport,
+            isAborted: true
+          });
         }
       }
     } catch (err) {
@@ -476,6 +542,16 @@ export async function startVisionDesktopExecution({
         jobId,
         error: err.message
       });
+
+      if (sessionId) {
+        notifyTaskOutcome({
+          sessionId,
+          jobState,
+          taskContract: jobState.taskContract,
+          finalReport: completionController.generateReport(jobState.taskContract || {}),
+          error: err
+        });
+      }
     } finally {
       stopScreenBorder();
     }

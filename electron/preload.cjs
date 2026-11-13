@@ -2,10 +2,32 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('ruxtDesktop', {
   platform: process.platform,
-  version: '2.1.0',
+  version: '2.0.0',
+  getVersion: () => ipcRenderer.invoke('app-get-version'),
   minimize: () => ipcRenderer.send('window-minimize'),
   maximize: () => ipcRenderer.send('window-maximize'),
   close: () => ipcRenderer.send('window-close'),
+
+  // Software Updates
+  checkForUpdates: () => ipcRenderer.invoke('app-check-for-updates'),
+  downloadUpdate: () => ipcRenderer.invoke('app-download-update'),
+  quitAndInstall: () => ipcRenderer.send('app-quit-and-install'),
+  onUpdaterEvent: (channel, cb) => {
+    const validChannels = [
+      'updater-checking',
+      'updater-update-available',
+      'updater-not-available',
+      'updater-error',
+      'updater-progress',
+      'updater-downloaded'
+    ];
+    if (validChannels.includes(channel)) {
+      const listener = (_event, data) => cb(data);
+      ipcRenderer.on(channel, listener);
+      return () => ipcRenderer.removeListener(channel, listener);
+    }
+    return () => {};
+  },
 
   // Floating 'RuXt on Work' HUD Overlay controls
   showOverlay: (data) => ipcRenderer.send('desktop-overlay-show', data),

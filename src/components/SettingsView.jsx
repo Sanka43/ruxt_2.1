@@ -53,7 +53,12 @@ import {
   ChevronDown,
   ChevronUp,
   HardDrive,
-  User
+  User,
+  Sun,
+  Moon,
+  Monitor,
+  Layout,
+  Type
 } from 'lucide-react';
 import ModelProvidersSection from './ModelProvidersSection.jsx';
 import ApiKeysSection from './ApiKeysSection.jsx';
@@ -132,7 +137,8 @@ export const CATEGORY_GROUPS = [
     items: [
       { id: 'network', name: 'Cloud Tunnel & Bridge', icon: Radio, badge: 'PORT 1234' },
       { id: 'storage', name: 'SQLite Storage & WAL', icon: Database, badge: null },
-      { id: 'diagnostics', name: 'System & Diagnostics', icon: Activity, badge: 'v2.1.0' }
+      { id: 'diagnostics', name: 'System & Diagnostics', icon: Activity, badge: 'v2.0.0' },
+      { id: 'updates', name: 'Software Updates', icon: Download, badge: 'AUTO' }
     ]
   }
 ];
@@ -247,7 +253,15 @@ export default function SettingsView({
   const [savedKeyFeedback, setSavedKeyFeedback] = useState({});
   const [apiKeySearchQuery, setApiKeySearchQuery] = useState('');
   const [cliPathOpen, setCliPathOpen] = useState(false);
+  const [themeCategoryFilter, setThemeCategoryFilter] = useState('all');
   const avatarInputRef = React.useRef(null);
+
+  // Software Update State
+  const [appVersion, setAppVersion] = useState('2.0.0');
+  const [updateStatus, setUpdateStatus] = useState('idle'); // 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error' | 'dev-mode'
+  const [updateInfo, setUpdateInfo] = useState(null);
+  const [downloadProgress, setDownloadProgress] = useState(null);
+  const [updateError, setUpdateError] = useState(null);
 
   const fetchProvidersStatus = async () => {
     setIsCheckingProviders(true);
@@ -310,7 +324,90 @@ export default function SettingsView({
     fetchStorageStats();
     fetchDiagnostics();
     fetchProvidersStatus();
+
+    if (window.ruxtDesktop?.getVersion) {
+      window.ruxtDesktop.getVersion().then(v => {
+        if (v) setAppVersion(v);
+      }).catch(() => {});
+    }
+
+    if (window.ruxtDesktop?.onUpdaterEvent) {
+      const unsubChecking = window.ruxtDesktop.onUpdaterEvent('updater-checking', () => {
+        setUpdateStatus('checking');
+        setUpdateError(null);
+      });
+      const unsubAvail = window.ruxtDesktop.onUpdaterEvent('updater-update-available', (info) => {
+        setUpdateStatus('available');
+        setUpdateInfo(info);
+      });
+      const unsubNotAvail = window.ruxtDesktop.onUpdaterEvent('updater-not-available', (info) => {
+        setUpdateStatus('not-available');
+        setUpdateInfo(info);
+      });
+      const unsubError = window.ruxtDesktop.onUpdaterEvent('updater-error', (err) => {
+        setUpdateStatus('error');
+        setUpdateError(err?.message || 'Update check failed');
+      });
+      const unsubProgress = window.ruxtDesktop.onUpdaterEvent('updater-progress', (prog) => {
+        setUpdateStatus('downloading');
+        setDownloadProgress(prog);
+      });
+      const unsubDownloaded = window.ruxtDesktop.onUpdaterEvent('updater-downloaded', (info) => {
+        setUpdateStatus('downloaded');
+        setUpdateInfo(info);
+      });
+
+      return () => {
+        if (typeof unsubChecking === 'function') unsubChecking();
+        if (typeof unsubAvail === 'function') unsubAvail();
+        if (typeof unsubNotAvail === 'function') unsubNotAvail();
+        if (typeof unsubError === 'function') unsubError();
+        if (typeof unsubProgress === 'function') unsubProgress();
+        if (typeof unsubDownloaded === 'function') unsubDownloaded();
+      };
+    }
   }, []);
+
+  const handleCheckForUpdates = async () => {
+    setUpdateStatus('checking');
+    setUpdateError(null);
+    if (window.ruxtDesktop?.checkForUpdates) {
+      try {
+        const res = await window.ruxtDesktop.checkForUpdates();
+        if (res?.status === 'dev-mode') {
+          setUpdateStatus('dev-mode');
+        } else if (res?.status === 'error') {
+          setUpdateStatus('error');
+          setUpdateError(res.message);
+        }
+      } catch (e) {
+        setUpdateStatus('error');
+        setUpdateError(e.message);
+      }
+    } else {
+      setTimeout(() => {
+        setUpdateStatus('not-available');
+      }, 900);
+    }
+  };
+
+  const handleDownloadUpdate = async () => {
+    setUpdateStatus('downloading');
+    if (window.ruxtDesktop?.downloadUpdate) {
+      try {
+        await window.ruxtDesktop.downloadUpdate();
+      } catch (e) {
+        setUpdateStatus('error');
+        setUpdateError(e.message);
+      }
+    }
+  };
+
+  const handleInstallUpdate = () => {
+    if (window.ruxtDesktop?.quitAndInstall) {
+      window.ruxtDesktop.quitAndInstall();
+    }
+  };
 
   const fetchStorageStats = async () => {
     try {
@@ -454,21 +551,27 @@ export default function SettingsView({
   }, [isSearching, searchQuery]);
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#0b0f19] text-slate-100 overflow-hidden select-none">
+    <div 
+      className="flex-1 flex flex-col h-full overflow-hidden select-none transition-colors duration-200"
+      style={{ backgroundColor: 'var(--theme-bg)', color: 'var(--theme-text-main)' }}
+    >
       {/* Top Header */}
-      <header className="px-6 py-4 border-b border-slate-800/80 bg-[#0d1322]/90 backdrop-blur flex items-center justify-between shrink-0">
+      <header 
+        className="px-6 py-4 border-b backdrop-blur flex items-center justify-between shrink-0 transition-colors"
+        style={{ backgroundColor: 'var(--theme-header)', borderColor: 'var(--theme-border)' }}
+      >
         <div className="flex items-center gap-3.5">
           <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/25">
             <Sparkles className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center gap-2.5">
-              <h1 className="text-base font-bold text-white tracking-tight">Workspace Settings</h1>
-              <span className="px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[10px] font-semibold tracking-wide">
+              <h1 className="text-base font-bold text-slate-900 dark:text-white tracking-tight">Workspace Settings</h1>
+              <span className="px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/30 text-[10px] font-semibold tracking-wide">
                 {activeProviderName}
               </span>
             </div>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               Configure neural models, cognitive guardrails, tunnel bridges, and UI ergonomics
             </p>
           </div>
@@ -483,12 +586,12 @@ export default function SettingsView({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search settings..."
-              className="w-60 bg-slate-900/90 border border-slate-800 rounded-xl pl-9 pr-3.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition shadow-inner"
+              className="w-60 bg-slate-100 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-xl pl-9 pr-3.5 py-1.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition shadow-xs"
             />
             {searchQuery && (
               <button 
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:hover:text-white"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -500,7 +603,7 @@ export default function SettingsView({
             <button
               onClick={onClose}
               title="Close Settings"
-              className="w-8 h-8 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white transition"
+              className="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-slate-200 dark:hover:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition shadow-xs"
             >
               <X className="w-4 h-4" />
             </button>
@@ -511,7 +614,10 @@ export default function SettingsView({
       {/* Two-Column Body */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Sidebar Categories (Grouped like Image 3) */}
-        <aside className="w-64 border-r border-slate-800/80 bg-[#090d16] flex flex-col justify-between shrink-0 p-3 overflow-y-auto">
+        <aside 
+          className="w-64 border-r flex flex-col justify-between shrink-0 p-3 overflow-y-auto transition-colors"
+          style={{ backgroundColor: 'var(--theme-sidebar)', borderColor: 'var(--theme-border)' }}
+        >
           <div className="space-y-4">
             {isSearching ? (
               <div className="space-y-1">
@@ -530,8 +636,8 @@ export default function SettingsView({
                       }}
                       className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
                         isSelected
-                          ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
-                          : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+                          ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'
                       }`}
                     >
                       <div className="flex items-center gap-2.5 truncate">
@@ -560,8 +666,8 @@ export default function SettingsView({
                         }}
                         className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
                           isSelected
-                            ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
-                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+                            ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'
                         }`}
                       >
                         <div className="flex items-center gap-2.5 truncate">
@@ -652,11 +758,11 @@ export default function SettingsView({
           {(activeCategory === 'overview' || (isSearching && 'overview leader orchestrator'.includes(searchQuery.toLowerCase()))) && (
             <div className="space-y-6">
               <div>
-                <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                  <LayoutDashboard className="w-5 h-5 text-indigo-400" />
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <LayoutDashboard className="w-5 h-5 text-indigo-500 dark:text-indigo-400" />
                   Overview & Team Leader
                 </h2>
-                <p className="text-xs text-slate-400 mt-1">
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                   RuXt central orchestrator hub, multi-specialist talent fleet, and workspace engine status.
                 </p>
               </div>
@@ -829,11 +935,11 @@ export default function SettingsView({
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                    <SlidersHorizontal className="w-5 h-5 text-indigo-400" />
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <SlidersHorizontal className="w-5 h-5 text-indigo-500 dark:text-indigo-400" />
                     General & RuXt Profile
                   </h2>
-                  <p className="text-xs text-slate-400 mt-1">
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                     Fully customize RuXt Leader's identity, photo, email, skills, and workspace preferences.
                   </p>
                 </div>
@@ -1271,8 +1377,11 @@ export default function SettingsView({
           {(activeCategory === 'guardrails' || (isSearching && 'guardrails cognition security autonomous rules'.includes(searchQuery.toLowerCase()))) && (
             <div className="space-y-6">
               <div>
-                <h2 className="text-xl font-bold text-white">Guardrails & Cognition</h2>
-                <p className="text-xs text-slate-400 mt-1">
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-indigo-500 dark:text-indigo-400" />
+                  Guardrails & Cognition
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                   Enforce strict workspace safety policies, reasoning budgets, and fallback chains.
                 </p>
               </div>
@@ -1432,8 +1541,11 @@ export default function SettingsView({
           {(activeCategory === 'network' || (isSearching && 'tunnel bridge port network lan fastify express'.includes(searchQuery.toLowerCase()))) && (
             <div className="space-y-6">
               <div>
-                <h2 className="text-xl font-bold text-white">Cloud Tunnel & Companion Bridge</h2>
-                <p className="text-xs text-slate-400 mt-1">
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Radio className="w-5 h-5 text-indigo-500 dark:text-indigo-400" />
+                  Cloud Tunnel & Companion Bridge
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                   Connect companion terminal tools, IDE drivers, and external webhook integrations.
                 </p>
               </div>
@@ -1546,109 +1658,399 @@ export default function SettingsView({
           {/* ======================================================== */}
           {/* CATEGORY 5: APPEARANCE & LAYOUT                          */}
           {/* ======================================================== */}
-          {(activeCategory === 'appearance' || (isSearching && 'appearance layout theme color font ui presets dark light ruxt ocean sand'.includes(searchQuery.toLowerCase()))) && (
+          {(activeCategory === 'appearance' || (isSearching && 'appearance layout theme color font ui presets dark light ruxt ocean sand midnight nord crimson solarized'.includes(searchQuery.toLowerCase()))) && (
             <div className="space-y-6">
               <div>
-                <h2 className="text-xl font-bold text-white">Appearance & Layout</h2>
-                <p className="text-xs text-slate-400 mt-1">
-                  Personalize themes, visual styles, and UI ergonomics across the entire workspace.
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Palette className="w-5 h-5 text-indigo-500 dark:text-indigo-400" />
+                  Appearance & Layout
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Personalize themes, light/dark color modes, custom accents, density, and live UI ergonomics.
                 </p>
               </div>
 
-              {/* 1. SAVED THEME PRESETS (Exact match to user reference image) */}
-              <div className="space-y-3">
-                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">
-                  Saved Theme Presets
+              {/* 1. PRIMARY LIGHT VS. DARK MODE SELECTOR */}
+              <div className="p-5 rounded-3xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800/90 shadow-sm space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-bold text-slate-900 dark:text-white">Workspace Color Mode</div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">Quickly toggle between high-contrast daylight and dark night presets</p>
+                  </div>
+                  <span className="text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/30">
+                    {['light', 'solarized-light', 'pure-white'].includes(localSettings.theme_preset) ? '☀️ Light Mode Active' : '🌙 Dark Mode Active'}
+                  </span>
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-                  {[
-                    {
-                      id: 'ruxt',
-                      tag: 'RUXT',
-                      title: 'RuXt Green',
-                      hex: '#143228',
-                      bgStyle: 'linear-gradient(135deg, #143228 0%, #081a13 100%)',
-                      borderClass: 'border-emerald-800/40 hover:border-emerald-600/60',
-                      activeBorderClass: 'border-emerald-400 ring-2 ring-emerald-400/40 shadow-lg shadow-emerald-950/50'
-                    },
-                    {
-                      id: 'light',
-                      tag: 'LIGHT',
-                      title: 'Clean Light',
-                      hex: '#1967ff',
-                      bgStyle: 'linear-gradient(135deg, #1967ff 0%, #0d52db 100%)',
-                      borderClass: 'border-blue-500/40 hover:border-blue-400',
-                      activeBorderClass: 'border-white ring-2 ring-blue-400 shadow-lg shadow-blue-500/30'
-                    },
-                    {
-                      id: 'dark',
-                      tag: 'DARK',
-                      title: 'Focus Dark',
-                      hex: '#7eb6ff',
-                      bgStyle: 'linear-gradient(135deg, #0e1726 0%, #060911 100%)',
-                      borderClass: 'border-slate-800 hover:border-slate-700',
-                      activeBorderClass: 'border-[#7eb6ff] ring-2 ring-[#7eb6ff]/30 shadow-lg shadow-blue-950/60'
-                    },
-                    {
-                      id: 'ocean',
-                      tag: 'OCEAN',
-                      title: 'Ocean Calm',
-                      hex: '#0f6f8a',
-                      bgStyle: 'linear-gradient(135deg, #0f6f8a 0%, #062b36 100%)',
-                      borderClass: 'border-cyan-800/40 hover:border-cyan-600/60',
-                      activeBorderClass: 'border-cyan-400 ring-2 ring-cyan-400/40 shadow-lg shadow-cyan-950/50'
-                    },
-                    {
-                      id: 'sand',
-                      tag: 'SAND',
-                      title: 'Warm Sand',
-                      hex: '#8b5a2b',
-                      bgStyle: 'linear-gradient(135deg, #8b5a2b 0%, #3d2310 100%)',
-                      borderClass: 'border-amber-800/40 hover:border-amber-600/60',
-                      activeBorderClass: 'border-amber-400 ring-2 ring-amber-400/40 shadow-lg shadow-amber-950/50'
-                    }
-                  ].map((preset) => {
-                    const isSelected = (localSettings.theme_preset || 'dark') === preset.id;
-                    return (
-                      <div
-                        key={preset.id}
-                        onClick={() => {
-                          handleChange('theme_preset', preset.id);
-                          onSaveSetting('theme_preset', preset.id);
-                          document.documentElement.setAttribute('data-theme', preset.id);
-                          if (localSettings.sound_haptics !== 'false') playSound('click');
-                          showNotification(`Switched theme to ${preset.title}!`);
-                        }}
-                        style={{ background: preset.bgStyle }}
-                        className={`h-28 rounded-2xl p-3.5 flex flex-col justify-between cursor-pointer transition-all duration-200 select-none border hover:scale-[1.02] ${
-                          isSelected ? preset.activeBorderClass : preset.borderClass
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-black tracking-wider text-white uppercase drop-shadow-sm">
-                            {preset.tag}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
+                  {/* Light Mode Card */}
+                  <div
+                    onClick={() => {
+                      const newTheme = 'light';
+                      handleChange('theme_preset', newTheme);
+                      onSaveSetting('theme_preset', newTheme);
+                      document.documentElement.setAttribute('data-theme', newTheme);
+                      document.documentElement.classList.remove('dark');
+                      document.documentElement.classList.add('light');
+                      if (localSettings.sound_haptics !== 'false') playSound('click');
+                      showNotification('Switched to Clean Light Mode!');
+                    }}
+                    className={`relative p-4 rounded-2xl border cursor-pointer transition-all duration-200 flex items-start gap-3.5 ${
+                      ['light', 'solarized-light', 'pure-white'].includes(localSettings.theme_preset)
+                        ? 'bg-blue-50/80 dark:bg-blue-950/30 border-blue-500 ring-2 ring-blue-500/30 shadow-md shadow-blue-500/10'
+                        : 'bg-slate-50 dark:bg-slate-950/40 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0 shadow-xs border border-amber-200">
+                      <Sun className="w-5 h-5 stroke-[2.5]" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-xs text-slate-900 dark:text-white">Clean Light Mode</span>
+                        {['light', 'solarized-light', 'pure-white'].includes(localSettings.theme_preset) && (
+                          <span className="w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px]">
+                            <Check className="w-2.5 h-2.5 stroke-[3]" />
                           </span>
-                          {isSelected && (
-                            <Check className="w-4 h-4 text-emerald-400 stroke-[3] drop-shadow" />
-                          )}
-                        </div>
-                        <div>
-                          <div className="text-xs font-bold text-white tracking-tight drop-shadow-sm">
-                            {preset.title}
-                          </div>
-                          <div className="text-[10px] text-white/70 font-mono mt-0.5">
-                            {preset.hex}
-                          </div>
-                        </div>
+                        )}
                       </div>
-                    );
-                  })}
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">
+                        High-contrast, glare-free daylight canvas inspired by Linear, Apple & Vercel.
+                      </p>
+                      <div className="mt-2.5 flex items-center gap-1.5">
+                        <span className="w-3 h-3 rounded-full bg-white border border-slate-300 shadow-xs" />
+                        <span className="w-3 h-3 rounded-full bg-slate-100 border border-slate-300 shadow-xs" />
+                        <span className="w-3 h-3 rounded-full bg-blue-600 shadow-xs" />
+                        <span className="text-[9px] text-slate-400 font-mono ml-1">#f8fafc / #ffffff</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Dark Mode Card */}
+                  <div
+                    onClick={() => {
+                      const newTheme = 'dark';
+                      handleChange('theme_preset', newTheme);
+                      onSaveSetting('theme_preset', newTheme);
+                      document.documentElement.setAttribute('data-theme', newTheme);
+                      document.documentElement.classList.remove('light');
+                      document.documentElement.classList.add('dark');
+                      if (localSettings.sound_haptics !== 'false') playSound('click');
+                      showNotification('Switched to Focus Dark Mode!');
+                    }}
+                    className={`relative p-4 rounded-2xl border cursor-pointer transition-all duration-200 flex items-start gap-3.5 ${
+                      !['light', 'solarized-light', 'pure-white'].includes(localSettings.theme_preset)
+                        ? 'bg-indigo-50/80 dark:bg-indigo-950/30 border-indigo-500 ring-2 ring-indigo-500/30 shadow-md shadow-indigo-500/10'
+                        : 'bg-slate-50 dark:bg-slate-950/40 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-indigo-950 text-indigo-400 flex items-center justify-center shrink-0 shadow-xs border border-indigo-800/60">
+                      <Moon className="w-5 h-5 stroke-[2.5]" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-900 dark:text-white">Focus Dark Mode</span>
+                        {!['light', 'solarized-light', 'pure-white'].includes(localSettings.theme_preset) && (
+                          <span className="w-4 h-4 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px]">
+                            <Check className="w-2.5 h-2.5 stroke-[3]" />
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">
+                        Deep contrast, low-light eye comfort designed for night coding and studio sessions.
+                      </p>
+                      <div className="mt-2.5 flex items-center gap-1.5">
+                        <span className="w-3 h-3 rounded-full bg-[#0b0f19] border border-slate-700 shadow-xs" />
+                        <span className="w-3 h-3 rounded-full bg-[#090d16] border border-slate-700 shadow-xs" />
+                        <span className="w-3 h-3 rounded-full bg-indigo-500 shadow-xs" />
+                        <span className="text-[9px] text-slate-400 font-mono ml-1">#0b0f19 / #0f172a</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* 2. Custom Accent Palette Swatches */}
-              <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/90 space-y-3">
-                <div className="text-xs font-bold text-white">Custom Accent Palette</div>
+              {/* 2. SAVED THEME PRESETS WITH FILTER TABS */}
+              <div className="p-5 rounded-3xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800/90 shadow-sm space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                  <div>
+                    <div className="text-xs font-bold text-slate-900 dark:text-white">Working Theme Presets</div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">Curated palettes with fine-tuned contrast, borders, and syntax highlighting</p>
+                  </div>
+
+                  {/* Filter Pills */}
+                  <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-950/60 p-1 rounded-xl border border-slate-200 dark:border-slate-800 text-[10px] font-semibold">
+                    <button
+                      type="button"
+                      onClick={() => setThemeCategoryFilter('all')}
+                      className={`px-2.5 py-1 rounded-lg transition ${
+                        themeCategoryFilter === 'all'
+                          ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs font-bold'
+                          : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      All (10)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setThemeCategoryFilter('light')}
+                      className={`px-2.5 py-1 rounded-lg transition flex items-center gap-1 ${
+                        themeCategoryFilter === 'light'
+                          ? 'bg-white dark:bg-slate-800 text-amber-600 dark:text-amber-300 shadow-xs font-bold'
+                          : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      <Sun className="w-3 h-3" />
+                      <span>Light (3)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setThemeCategoryFilter('dark')}
+                      className={`px-2.5 py-1 rounded-lg transition flex items-center gap-1 ${
+                        themeCategoryFilter === 'dark'
+                          ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-300 shadow-xs font-bold'
+                          : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      <Moon className="w-3 h-3" />
+                      <span>Dark (7)</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                  {[
+                    // Light Themes
+                    {
+                      id: 'light',
+                      category: 'light',
+                      tag: 'LIGHT',
+                      title: 'Clean Light',
+                      hex: '#2563eb',
+                      sub: 'Linear daylight canvas',
+                      bgStyle: 'linear-gradient(135deg, #1967ff 0%, #0d52db 100%)',
+                      borderClass: 'border-blue-500/40 hover:border-blue-400',
+                      activeBorderClass: 'border-blue-600 ring-2 ring-blue-500 shadow-md shadow-blue-500/30'
+                    },
+                    {
+                      id: 'solarized-light',
+                      category: 'light',
+                      tag: 'SOLAR',
+                      title: 'Solarized Paper',
+                      hex: '#b58900',
+                      sub: 'Warm cream eye-comfort',
+                      bgStyle: 'linear-gradient(135deg, #d3cbb7 0%, #b58900 100%)',
+                      borderClass: 'border-amber-600/40 hover:border-amber-500',
+                      activeBorderClass: 'border-amber-500 ring-2 ring-amber-500 shadow-md shadow-amber-600/30'
+                    },
+                    {
+                      id: 'pure-white',
+                      category: 'light',
+                      tag: 'MONO',
+                      title: 'Pure White',
+                      hex: '#09090b',
+                      sub: 'High-contrast monochrome',
+                      bgStyle: 'linear-gradient(135deg, #e4e4e7 0%, #52525b 100%)',
+                      borderClass: 'border-slate-400/50 hover:border-slate-600',
+                      activeBorderClass: 'border-slate-900 ring-2 ring-slate-800 shadow-md shadow-slate-900/30'
+                    },
+                    // Dark Themes
+                    {
+                      id: 'dark',
+                      category: 'dark',
+                      tag: 'DARK',
+                      title: 'Focus Dark',
+                      hex: '#6366f1',
+                      sub: 'Deep midnight navy',
+                      bgStyle: 'linear-gradient(135deg, #0e1726 0%, #060911 100%)',
+                      borderClass: 'border-slate-800 hover:border-slate-700',
+                      activeBorderClass: 'border-[#7eb6ff] ring-2 ring-[#7eb6ff]/40 shadow-md shadow-blue-950/60'
+                    },
+                    {
+                      id: 'ruxt',
+                      category: 'dark',
+                      tag: 'RUXT',
+                      title: 'RuXt Matrix',
+                      hex: '#10b981',
+                      sub: 'Carbon matrix emerald',
+                      bgStyle: 'linear-gradient(135deg, #143228 0%, #081a13 100%)',
+                      borderClass: 'border-emerald-800/40 hover:border-emerald-600/60',
+                      activeBorderClass: 'border-emerald-400 ring-2 ring-emerald-400/40 shadow-md shadow-emerald-950/50'
+                    },
+                    {
+                      id: 'midnight',
+                      category: 'dark',
+                      tag: 'OLED',
+                      title: 'Midnight OLED',
+                      hex: '#a855f7',
+                      sub: 'True black electric violet',
+                      bgStyle: 'linear-gradient(135deg, #27173e 0%, #050508 100%)',
+                      borderClass: 'border-purple-900/50 hover:border-purple-600',
+                      activeBorderClass: 'border-purple-400 ring-2 ring-purple-400/40 shadow-md shadow-purple-950/60'
+                    },
+                    {
+                      id: 'nord',
+                      category: 'dark',
+                      tag: 'NORD',
+                      title: 'Nord Arctic',
+                      hex: '#88c0d0',
+                      sub: 'Arctic frost slate',
+                      bgStyle: 'linear-gradient(135deg, #2e3440 0%, #1e222a 100%)',
+                      borderClass: 'border-slate-700/60 hover:border-cyan-600/60',
+                      activeBorderClass: 'border-cyan-300 ring-2 ring-cyan-300/40 shadow-md shadow-cyan-950/50'
+                    },
+                    {
+                      id: 'ocean',
+                      category: 'dark',
+                      tag: 'OCEAN',
+                      title: 'Ocean Calm',
+                      hex: '#06b6d4',
+                      sub: 'Cyber maritime abyss',
+                      bgStyle: 'linear-gradient(135deg, #0f6f8a 0%, #062b36 100%)',
+                      borderClass: 'border-cyan-800/40 hover:border-cyan-600/60',
+                      activeBorderClass: 'border-cyan-400 ring-2 ring-cyan-400/40 shadow-md shadow-cyan-950/50'
+                    },
+                    {
+                      id: 'sand',
+                      category: 'dark',
+                      tag: 'SAND',
+                      title: 'Warm Sand',
+                      hex: '#f59e0b',
+                      sub: 'Espresso dusk amber',
+                      bgStyle: 'linear-gradient(135deg, #8b5a2b 0%, #3d2310 100%)',
+                      borderClass: 'border-amber-800/40 hover:border-amber-600/60',
+                      activeBorderClass: 'border-amber-400 ring-2 ring-amber-400/40 shadow-md shadow-amber-950/50'
+                    },
+                    {
+                      id: 'crimson',
+                      category: 'dark',
+                      tag: 'RUBY',
+                      title: 'Cyber Crimson',
+                      hex: '#f43f5e',
+                      sub: 'Velvet black ruby',
+                      bgStyle: 'linear-gradient(135deg, #4c0519 0%, #090204 100%)',
+                      borderClass: 'border-rose-900/50 hover:border-rose-600',
+                      activeBorderClass: 'border-rose-400 ring-2 ring-rose-400/40 shadow-md shadow-rose-950/60'
+                    }
+                  ]
+                    .filter(p => themeCategoryFilter === 'all' || p.category === themeCategoryFilter)
+                    .map((preset) => {
+                      const isSelected = (localSettings.theme_preset || 'light') === preset.id;
+                      const isLightTheme = ['light', 'solarized-light', 'pure-white'].includes(preset.id);
+                      return (
+                        <div
+                          key={preset.id}
+                          onClick={() => {
+                            handleChange('theme_preset', preset.id);
+                            onSaveSetting('theme_preset', preset.id);
+                            document.documentElement.setAttribute('data-theme', preset.id);
+                            if (isLightTheme) {
+                              document.documentElement.classList.remove('dark');
+                              document.documentElement.classList.add('light');
+                            } else {
+                              document.documentElement.classList.remove('light');
+                              document.documentElement.classList.add('dark');
+                            }
+                            if (localSettings.sound_haptics !== 'false') playSound('click');
+                            showNotification(`Activated ${preset.title} theme!`);
+                          }}
+                          style={{ background: preset.bgStyle }}
+                          className={`h-28 rounded-2xl p-3 flex flex-col justify-between cursor-pointer transition-all duration-200 select-none border hover:scale-[1.03] ${
+                            isSelected ? preset.activeBorderClass : preset.borderClass
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-black tracking-wider text-white uppercase drop-shadow-sm">
+                              {preset.tag}
+                            </span>
+                            {isSelected && (
+                              <div className="w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-md">
+                                <Check className="w-3 h-3 stroke-[3]" />
+                              </div>
+                            )}
+                          </div>
+                          <div>
+                            <div className="text-xs font-bold text-white tracking-tight drop-shadow-sm">
+                              {preset.title}
+                            </div>
+                            <div className="text-[9px] text-white/80 truncate mt-0.5">
+                              {preset.sub}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+
+              {/* 3. LIVE WORKSPACE PREVIEW MOCKUP */}
+              <div className="p-5 rounded-3xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800/90 shadow-sm space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Layout className="w-4 h-4 text-indigo-500" />
+                    <span className="text-xs font-bold text-slate-900 dark:text-white">Live Real-Time UI Preview</span>
+                  </div>
+                  <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-500/30 flex items-center gap-1 font-bold">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Live Tokens
+                  </span>
+                </div>
+
+                {/* Miniature RuXt Studio Window Preview */}
+                <div 
+                  className="rounded-2xl border p-3.5 space-y-3 transition-colors shadow-inner"
+                  style={{ backgroundColor: 'var(--theme-bg)', borderColor: 'var(--theme-border)' }}
+                >
+                  {/* Top Bar */}
+                  <div 
+                    className="p-2.5 rounded-xl border flex items-center justify-between"
+                    style={{ backgroundColor: 'var(--theme-header)', borderColor: 'var(--theme-border)' }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-lg overflow-hidden ring-1 ring-amber-400">
+                        <img src="/ruxt-logo.png" alt="RuXt" className="w-full h-full object-cover" />
+                      </div>
+                      <div>
+                        <div className="text-[11px] font-bold" style={{ color: 'var(--theme-text-main)' }}>RuXt Team Leader</div>
+                        <div className="text-[8px]" style={{ color: 'var(--theme-text-muted)' }}>Chief of Staff • Online</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[8px] font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: 'var(--theme-accent)', color: 'var(--theme-accent-text)' }}>
+                        READY
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Sample Chat Messages */}
+                  <div className="space-y-2">
+                    {/* User bubble */}
+                    <div className="flex justify-end">
+                      <div className="max-w-[75%] px-3 py-1.5 rounded-xl rounded-tr-xs text-[11px] bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-xs">
+                        Audit this full-stack repo and run tests
+                      </div>
+                    </div>
+                    {/* Assistant bubble */}
+                    <div className="flex justify-start">
+                      <div 
+                        className="max-w-[85%] p-3 rounded-xl rounded-tl-xs border text-[11px] space-y-1 shadow-sm"
+                        style={{ backgroundColor: 'var(--theme-card)', borderColor: 'var(--theme-border)', color: 'var(--theme-text-main)' }}
+                      >
+                        <div className="font-bold flex items-center gap-1.5">
+                          <span style={{ color: 'var(--theme-accent)' }}>Plan:</span>
+                          <span>1. Code review 2. Execute unit tests</span>
+                        </div>
+                        <div className="text-[10px]" style={{ color: 'var(--theme-text-muted)' }}>
+                          Specialist Julian Vance dispatched for UI/UX audit.
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 4. CUSTOM ACCENT PALETTE SWATCHES */}
+              <div className="p-5 rounded-3xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800/90 shadow-sm space-y-3">
+                <div className="text-xs font-bold text-slate-900 dark:text-white">Custom Accent Palette</div>
                 <div className="grid grid-cols-4 sm:grid-cols-7 gap-2.5">
                   {[
                     { id: 'indigo', label: 'Indigo', bg: 'bg-indigo-600' },
@@ -1673,12 +2075,12 @@ export default function SettingsView({
                         }}
                         className={`p-2.5 rounded-xl border flex flex-col items-center gap-1.5 transition ${
                           isSelected
-                            ? 'border-white ring-2 ring-white/40 bg-slate-800 shadow-md'
-                            : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
+                            ? 'border-indigo-600 dark:border-white ring-2 ring-indigo-500/40 dark:ring-white/40 bg-indigo-50 dark:bg-slate-800 shadow-md'
+                            : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 hover:border-slate-300 dark:hover:border-slate-700'
                         }`}
                       >
-                        <div className={`w-5 h-5 rounded-full ${col.bg} shadow-sm`} />
-                        <span className="text-[10px] font-semibold text-slate-300 truncate w-full text-center">
+                        <div className={`w-5 h-5 rounded-full ${col.bg} shadow-xs`} />
+                        <span className="text-[10px] font-semibold text-slate-700 dark:text-slate-300 truncate w-full text-center">
                           {col.label}
                         </span>
                       </button>
@@ -1687,9 +2089,9 @@ export default function SettingsView({
                 </div>
               </div>
 
-              {/* 3. Interface Density */}
-              <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/90 space-y-3">
-                <div className="text-xs font-bold text-white">Interface Density & Sizing</div>
+              {/* 5. INTERFACE DENSITY */}
+              <div className="p-5 rounded-3xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800/90 shadow-sm space-y-3">
+                <div className="text-xs font-bold text-slate-900 dark:text-white">Interface Density & Sizing</div>
                 <div className="grid grid-cols-2 gap-3">
                   {[
                     { id: 'comfortable', label: 'Comfortable', sub: 'Spacious padding & breathing room' },
@@ -1709,24 +2111,24 @@ export default function SettingsView({
                         }}
                         className={`p-3.5 rounded-xl border text-left transition ${
                           isDenActive
-                            ? 'bg-indigo-600/20 border-indigo-500 ring-1 ring-indigo-500'
-                            : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'
+                            ? 'bg-indigo-50 dark:bg-indigo-600/20 border-indigo-500 ring-1 ring-indigo-500 shadow-xs'
+                            : 'bg-slate-50 dark:bg-slate-950/60 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
                         }`}
                       >
-                        <div className="text-xs font-bold text-white">{den.label}</div>
-                        <div className="text-[10px] text-slate-400 mt-0.5">{den.sub}</div>
+                        <div className="text-xs font-bold text-slate-900 dark:text-white">{den.label}</div>
+                        <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">{den.sub}</div>
                       </button>
                     );
                   })}
                 </div>
               </div>
 
-              {/* 4. Chat Bubble & Message Styling */}
-              <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/90 space-y-3">
-                <div className="text-xs font-bold text-white">Chat Message Bubble Layout</div>
+              {/* 6. CHAT BUBBLE & MESSAGE STYLING */}
+              <div className="p-5 rounded-3xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800/90 shadow-sm space-y-3">
+                <div className="text-xs font-bold text-slate-900 dark:text-white">Chat Message Bubble Layout</div>
                 <div className="grid grid-cols-2 gap-3">
                   {[
-                    { id: 'cards', label: 'Modern Rounded Cards', sub: 'Distinct bubbles with subtle borders' },
+                    { id: 'cards', label: 'Modern Rounded Cards', sub: 'Distinct bubbles with subtle borders & soft elevation' },
                     { id: 'minimal', label: 'Minimal Stream Thread', sub: 'Flush markdown thread without cards' }
                   ].map((st) => {
                     const isStyleActive = (localSettings.chat_bubble_style || 'cards') === st.id;
@@ -1741,32 +2143,32 @@ export default function SettingsView({
                         }}
                         className={`p-3.5 rounded-xl border text-left transition ${
                           isStyleActive
-                            ? 'bg-indigo-600/20 border-indigo-500 ring-1 ring-indigo-500'
-                            : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'
+                            ? 'bg-indigo-50 dark:bg-indigo-600/20 border-indigo-500 ring-1 ring-indigo-500 shadow-xs'
+                            : 'bg-slate-50 dark:bg-slate-950/60 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
                         }`}
                       >
-                        <div className="text-xs font-bold text-white">{st.label}</div>
-                        <div className="text-[10px] text-slate-400 mt-0.5">{st.sub}</div>
+                        <div className="text-xs font-bold text-slate-900 dark:text-white">{st.label}</div>
+                        <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">{st.sub}</div>
                       </button>
                     );
                   })}
                 </div>
               </div>
 
-              {/* 5. Code Blocks Display Toggles */}
-              <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/90 space-y-3">
-                <div className="text-xs font-bold text-white">Code Editor & Chat Markdown</div>
-                <div className="space-y-3">
+              {/* 7. CODE BLOCKS & TYPOGRAPHY TOGGLES */}
+              <div className="p-5 rounded-3xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800/90 shadow-sm space-y-3">
+                <div className="text-xs font-bold text-slate-900 dark:text-white">Code Editor & Chat Markdown</div>
+                <div className="space-y-3.5">
                   <div className="flex items-center justify-between">
                     <div>
-                      <span className="text-xs font-medium text-slate-200">Show line numbers in code blocks</span>
-                      <p className="text-[10px] text-slate-500">Displays gutter line indexes in code snippets.</p>
+                      <span className="text-xs font-medium text-slate-800 dark:text-slate-200">Show line numbers in code blocks</span>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400">Displays gutter line indexes in code snippets.</p>
                     </div>
                     <button
                       type="button"
                       onClick={() => handleToggle('code_line_numbers', true)}
                       className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                        localSettings.code_line_numbers !== 'false' ? 'bg-indigo-600' : 'bg-slate-700'
+                        localSettings.code_line_numbers !== 'false' ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'
                       }`}
                     >
                       <span
@@ -1779,8 +2181,8 @@ export default function SettingsView({
 
                   <div className="flex items-center justify-between">
                     <div>
-                      <span className="text-xs font-medium text-slate-200">Enable programming ligatures</span>
-                      <p className="text-[10px] text-slate-500">Connects symbols like =&gt;, ===, and !== into clean glyphs.</p>
+                      <span className="text-xs font-medium text-slate-800 dark:text-slate-200">Enable programming ligatures</span>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400">Connects symbols like =&gt;, ===, and !== into clean glyphs.</p>
                     </div>
                     <button
                       type="button"
@@ -1793,7 +2195,7 @@ export default function SettingsView({
                         if (localSettings.sound_haptics !== 'false') playSound('toggle');
                       }}
                       className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                        localSettings.font_ligatures !== 'false' ? 'bg-indigo-600' : 'bg-slate-700'
+                        localSettings.font_ligatures !== 'false' ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'
                       }`}
                     >
                       <span
@@ -1806,14 +2208,14 @@ export default function SettingsView({
 
                   <div className="flex items-center justify-between">
                     <div>
-                      <span className="text-xs font-medium text-slate-200">Glassmorphism & Backdrop Blur</span>
-                      <p className="text-[10px] text-slate-500">Enable translucent frosted-glass modal and sidebar surfaces.</p>
+                      <span className="text-xs font-medium text-slate-800 dark:text-slate-200">Glassmorphism & Backdrop Blur</span>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400">Enable translucent frosted-glass modal and header surfaces.</p>
                     </div>
                     <button
                       type="button"
                       onClick={() => handleToggle('glassmorphism', true)}
                       className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                        localSettings.glassmorphism !== 'false' ? 'bg-indigo-600' : 'bg-slate-700'
+                        localSettings.glassmorphism !== 'false' ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'
                       }`}
                     >
                       <span
@@ -1834,8 +2236,11 @@ export default function SettingsView({
           {(activeCategory === 'storage' || (isSearching && 'sqlite storage wal database backup vacuum'.includes(searchQuery.toLowerCase()))) && (
             <div className="space-y-6">
               <div>
-                <h2 className="text-xl font-bold text-white">SQLite Storage & WAL</h2>
-                <p className="text-xs text-slate-400 mt-1">
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Database className="w-5 h-5 text-indigo-500 dark:text-indigo-400" />
+                  SQLite Storage & WAL
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                   Inspect database disk footprint, run vacuum maintenance, and purge old sessions.
                 </p>
               </div>
@@ -1943,8 +2348,11 @@ export default function SettingsView({
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-xl font-bold text-white">System & Diagnostics</h2>
-                  <p className="text-xs text-slate-400 mt-1">
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <Activity className="w-5 h-5 text-indigo-500 dark:text-indigo-400" />
+                    System & Diagnostics
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                     Environment telemetry, local CLI runtimes, and engine logs.
                   </p>
                 </div>
@@ -2057,6 +2465,214 @@ export default function SettingsView({
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ======================================================== */}
+          {/* CATEGORY 8: SOFTWARE UPDATES                             */}
+          {/* ======================================================== */}
+          {(activeCategory === 'updates' || (isSearching && 'software updates upgrade version release auto-updater'.includes(searchQuery.toLowerCase()))) && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <Download className="w-5 h-5 text-indigo-500 dark:text-indigo-400" />
+                    Software Updates
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Keep RuXt AI Studio up to date with new features, model providers, and engine enhancements.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCheckForUpdates}
+                  disabled={updateStatus === 'checking' || updateStatus === 'downloading'}
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-1.5 transition shadow-md shadow-indigo-600/25"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${updateStatus === 'checking' ? 'animate-spin' : ''}`} />
+                  {updateStatus === 'checking' ? 'Checking GitHub...' : 'Check for Updates'}
+                </button>
+              </div>
+
+              {/* Version & Release Channel Card */}
+              <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+                    <Zap className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-base font-bold text-white">RuXt AI Studio</span>
+                      <span className="px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 text-[10px] font-bold border border-indigo-500/30">
+                        v{appVersion}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Target Repository: <span className="text-slate-300 font-mono">Sanka43/ruxt_2.1</span> (GitHub Releases)
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="text-xs font-medium text-slate-300">Continuous Auto-Sync</span>
+                </div>
+              </div>
+
+              {/* Status Display Area */}
+              {updateStatus === 'checking' && (
+                <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 text-center space-y-3">
+                  <RefreshCw className="w-8 h-8 text-indigo-400 animate-spin mx-auto" />
+                  <h4 className="text-sm font-semibold text-white">Connecting to GitHub Releases...</h4>
+                  <p className="text-xs text-slate-400 max-w-md mx-auto">
+                    Comparing local version (v{appVersion}) against latest published release packages.
+                  </p>
+                </div>
+              )}
+
+              {updateStatus === 'not-available' && (
+                <div className="p-6 rounded-2xl bg-slate-900/40 border border-emerald-500/30 space-y-3">
+                  <div className="flex items-center gap-3">
+                    <CheckCircle2 className="w-6 h-6 text-emerald-400 shrink-0" />
+                    <div>
+                      <h4 className="text-sm font-bold text-white">You're up to date!</h4>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        RuXt AI Studio v{appVersion} is currently the newest version available. No updates needed.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {updateStatus === 'available' && updateInfo && (
+                <div className="p-6 rounded-2xl bg-gradient-to-br from-indigo-950/40 to-slate-900/60 border border-indigo-500/40 space-y-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <Sparkles className="w-6 h-6 text-amber-400 shrink-0" />
+                      <div>
+                        <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                          New Version Available: v{updateInfo.version}
+                          <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-500/40">
+                            UPDATE READY
+                          </span>
+                        </h4>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          A newer release has been published on GitHub.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleDownloadUpdate}
+                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 flex items-center gap-1.5 transition"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      Download Update
+                    </button>
+                  </div>
+                  {updateInfo.releaseNotes && (
+                    <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 text-xs text-slate-300 max-h-40 overflow-y-auto">
+                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Release Highlights:</div>
+                      <div dangerouslySetInnerHTML={{ __html: updateInfo.releaseNotes }} />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {updateStatus === 'downloading' && (
+                <div className="p-6 rounded-2xl bg-slate-900/60 border border-indigo-500/30 space-y-4">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-white flex items-center gap-2">
+                      <Download className="w-4 h-4 text-indigo-400 animate-bounce" />
+                      Downloading Update Package...
+                    </span>
+                    <span className="font-mono text-indigo-400 font-bold">
+                      {downloadProgress?.percent || 0}%
+                    </span>
+                  </div>
+                  <div className="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-indigo-500 to-emerald-400 transition-all duration-300 rounded-full"
+                      style={{ width: `${downloadProgress?.percent || 0}%` }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono">
+                    <span>
+                      Speed: {downloadProgress?.bytesPerSecond ? `${(downloadProgress.bytesPerSecond / 1024 / 1024).toFixed(2)} MB/s` : 'Calculating...'}
+                    </span>
+                    <span>
+                      {downloadProgress?.transferred ? `${(downloadProgress.transferred / 1024 / 1024).toFixed(1)} MB` : '0 MB'} / {downloadProgress?.total ? `${(downloadProgress.total / 1024 / 1024).toFixed(1)} MB` : '...'}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {updateStatus === 'downloaded' && (
+                <div className="p-6 rounded-2xl bg-slate-900/60 border border-emerald-500/50 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <CheckCircle2 className="w-7 h-7 text-emerald-400 shrink-0" />
+                      <div>
+                        <h4 className="text-sm font-bold text-white">Update Download Complete!</h4>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          The new version is ready to install. Restart RuXt now to finish applying changes.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleInstallUpdate}
+                      className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/30 flex items-center gap-2 transition"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      Restart & Install Now
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {updateStatus === 'dev-mode' && (
+                <div className="p-5 rounded-2xl bg-slate-900/50 border border-amber-500/30 flex items-start gap-3">
+                  <Info className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="text-xs font-bold text-white">Development Environment Detected</h4>
+                    <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                      You are running RuXt via live development server (<code className="text-amber-300 font-mono">npm run dev</code>). In-App binary replacement is disabled to prevent overwriting source files. In packaged installations (<code className="text-indigo-300 font-mono">npm run dist</code>), auto-updates will download and install seamlessly.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {updateStatus === 'error' && (
+                <div className="p-5 rounded-2xl bg-rose-950/20 border border-rose-500/30 flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="text-xs font-bold text-white">Update Check Failed</h4>
+                      <p className="text-[11px] text-rose-300 mt-0.5">
+                        {updateError || 'Could not connect to update server. Please check your internet connection.'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCheckForUpdates}
+                    className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-[11px] font-semibold shrink-0"
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+
+              {/* Data Safety Assurance */}
+              <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800/80 space-y-2">
+                <div className="flex items-center gap-2 text-xs font-semibold text-slate-300">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                  Zero-Data-Loss Guarantee
+                </div>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  RuXt preserves your local SQLite database (<code className="text-slate-300 font-mono">ruxt.sqlite</code>), custom agents, chat logs, API credentials, and task progress in your OS user profile data directory. Updating to a newer version will never delete or reset your data.
+                </p>
+              </div>
             </div>
           )}
         </main>

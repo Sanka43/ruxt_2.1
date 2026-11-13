@@ -4,6 +4,17 @@ const { spawn } = require('child_process');
 const http = require('http');
 const fs = require('fs');
 
+let autoUpdater = null;
+try {
+  ({ autoUpdater } = require('electron-updater'));
+  if (autoUpdater) {
+    autoUpdater.autoDownload = false;
+    autoUpdater.autoInstallOnAppQuit = true;
+  }
+} catch (e) {
+  console.warn('[RuXt Desktop] Could not initialize electron-updater:', e.message);
+}
+
 let mainWindow = null;
 let overlayWindow = null;
 let serverProcess = null;
@@ -264,11 +275,106 @@ function createWindow() {
   });
 }
 
+function setupAutoUpdater() {
+  if (!autoUpdater) return;
+
+  autoUpdater.on('checking-for-update', () => {
+    console.log('[RuXt Updater] Checking for update...');
+    mainWindow?.webContents.send('updater-checking');
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    console.log('[RuXt Updater] Update available:', info.version);
+    mainWindow?.webContents.send('updater-update-available', {
+      version: info.version,
+      releaseDate: info.releaseDate,
+      releaseNotes: info.releaseNotes || '',
+      files: info.files
+    });
+  });
+
+  autoUpdater.on('update-not-available', (info) => {
+    console.log('[RuXt Updater] Already on latest version:', info?.version || app.getVersion());
+    mainWindow?.webContents.send('updater-not-available', {
+      version: info?.version || app.getVersion()
+    });
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.warn('[RuXt Updater] Error:', err?.message || err);
+    mainWindow?.webContents.send('updater-error', {
+      message: err?.message || 'Error checking for updates'
+    });
+  });
+
+  autoUpdater.on('download-progress', (progressObj) => {
+    mainWindow?.webContents.send('updater-progress', {
+      percent: Math.round(progressObj.percent),
+      bytesPerSecond: progressObj.bytesPerSecond,
+      transferred: progressObj.transferred,
+      total: progressObj.total
+    });
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('[RuXt Updater] Update downloaded successfully');
+    mainWindow?.webContents.send('updater-downloaded', {
+      version: info.version,
+      releaseDate: info.releaseDate
+    });
+  });
+
+  ipcMain.handle('app-get-version', () => {
+    return app.getVersion();
+  });
+
+  ipcMain.handle('app-check-for-updates', async () => {
+    if (isDev) {
+      return { status: 'dev-mode', version: app.getVersion(), message: 'Auto-updates are inactive in development mode.' };
+    }
+    try {
+      const result = await autoUpdater.checkForUpdates();
+      return { status: 'ok', updateInfo: result?.updateInfo };
+    } catch (err) {
+      console.warn('[RuXt Updater] Check failed:', err.message);
+      return { status: 'error', message: err.message };
+    }
+  });
+
+  ipcMain.handle('app-download-update', async () => {
+    if (isDev) {
+      return { status: 'dev-mode' };
+    }
+    try {
+      await autoUpdater.downloadUpdate();
+      return { status: 'downloading' };
+    } catch (err) {
+      return { status: 'error', message: err.message };
+    }
+  });
+
+  ipcMain.on('app-quit-and-install', () => {
+    if (!isDev) {
+      autoUpdater.quitAndInstall();
+    }
+  });
+}
+
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
   startBackendServer();
   // Brief delay to allow backend to bind port
   setTimeout(createWindow, 800);
+  setupAutoUpdater();
+
+  // Auto-check in background on launch (packaged only)
+  if (!isDev && autoUpdater) {
+    setTimeout(() => {
+      autoUpdater.checkForUpdates().catch(err => {
+        console.warn('[RuXt Updater] Silent launch check:', err?.message);
+      });
+    }, 8000);
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

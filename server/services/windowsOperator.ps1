@@ -297,10 +297,8 @@ public class WinDesktopEngine {
         bool focused = false;
         Thread t = new Thread(() => {
             IntPtr hDesk = OpenDesktop("default", 0, false, 0x01FF);
-            if (hDesk == IntPtr.Zero) return;
-            if (!SetThreadDesktop(hDesk)) {
-                CloseDesktop(hDesk);
-                return;
+            if (hDesk != IntPtr.Zero) {
+                SetThreadDesktop(hDesk);
             }
 
             string q = (nameOrTitle ?? "").Trim().ToLower();
@@ -317,7 +315,7 @@ public class WinDesktopEngine {
                     string cls = sbClass.ToString().ToLower();
 
                     bool match = false;
-                    if (q == "notepad" && (cls.Contains("notepad") || title.Contains("notepad"))) match = true;
+                    if (q == "notepad" && (cls.Contains("notepad") || title.Contains("notepad") || title.Contains("untitled") || cls.Contains("applicationframehost"))) match = true;
                     else if (q == "chrome" && (cls.Contains("chrome") || title.Contains("chrome"))) match = true;
                     else if (q == "youtube" && (title.Contains("youtube") || title.Contains("results?search_query"))) match = true;
                     else if (q == "calc" || q == "calculator") {
@@ -338,7 +336,7 @@ public class WinDesktopEngine {
                 return true;
             }, IntPtr.Zero);
 
-            CloseDesktop(hDesk);
+            if (hDesk != IntPtr.Zero) CloseDesktop(hDesk);
         });
         t.Start();
         t.Join();
@@ -349,8 +347,9 @@ public class WinDesktopEngine {
         string res = "WARN:NOT_FOUND";
         Thread t = new Thread(() => {
             IntPtr hDesk = OpenDesktop("default", 0, false, 0x01FF);
-            if (hDesk == IntPtr.Zero) return;
-            if (!SetThreadDesktop(hDesk)) { CloseDesktop(hDesk); return; }
+            if (hDesk != IntPtr.Zero) {
+                SetThreadDesktop(hDesk);
+            }
 
             string q = (nameOrTitle ?? "").Trim().ToLower();
 
@@ -367,7 +366,7 @@ public class WinDesktopEngine {
                     string cls = sbClass.ToString().ToLower();
 
                     bool match = false;
-                    if (q == "notepad" && (cls.Contains("notepad") || tLower.Contains("notepad"))) match = true;
+                    if (q == "notepad" && (cls.Contains("notepad") || tLower.Contains("notepad") || tLower.Contains("untitled") || cls.Contains("applicationframehost"))) match = true;
                     else if (q == "chrome" && (cls.Contains("chrome") || tLower.Contains("chrome"))) match = true;
                     else if (tLower.Contains(q) || cls.Contains(q)) match = true;
 
@@ -386,7 +385,7 @@ public class WinDesktopEngine {
                 return true;
             }, IntPtr.Zero);
 
-            CloseDesktop(hDesk);
+            if (hDesk != IntPtr.Zero) CloseDesktop(hDesk);
         });
         t.Start();
         t.Join();
@@ -570,10 +569,15 @@ public class WinDesktopEngine {
     public static bool SetClipboardText(string text) {
         bool ok = false;
         Thread t = new Thread(() => {
-            try {
-                System.Windows.Forms.Clipboard.SetText(text);
-                ok = true;
-            } catch {}
+            for (int attempt = 0; attempt < 5; attempt++) {
+                try {
+                    System.Windows.Forms.Clipboard.SetText(text);
+                    ok = true;
+                    break;
+                } catch {
+                    Thread.Sleep(50);
+                }
+            }
         });
         t.SetApartmentState(ApartmentState.STA);
         t.Start();
@@ -836,10 +840,15 @@ switch ($Action.ToLower()) {
 
     "clipboard_paste" {
         if (-not [string]::IsNullOrEmpty($Text)) {
-            $null = [WinDesktopEngine]::SetClipboardText($Text)
-            Start-Sleep -Milliseconds 60
+            $pasted = $false
+            for ($attempt = 0; $attempt -lt 5; $attempt++) {
+                $ok = [WinDesktopEngine]::SetClipboardText($Text)
+                if ($ok) { $pasted = $true; break; }
+                Start-Sleep -Milliseconds 60
+            }
+            Start-Sleep -Milliseconds 100
             [WinDesktopEngine]::SendKeyCombination("ctrl", "v")
-            Start-Sleep -Milliseconds 60
+            Start-Sleep -Milliseconds 100
             Write-Output "OK:CLIPBOARD_PASTED"
         } else {
             Write-Output "ERR:NO_TEXT"

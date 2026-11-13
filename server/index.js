@@ -12,6 +12,8 @@ import workspaceRoutes from './routes/workspace.js';
 import marketplaceRoutes from './routes/marketplace.js';
 import boardroomRoutes from './routes/boardroom.js';
 import desktopRoutes from './routes/desktop.js';
+import gscRoutes from './routes/gsc.js';
+import { startGscScheduler } from './services/gscScheduler.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,7 +24,8 @@ const PORT = process.env.PORT || 1234;
 
 // Middlewares
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // API Routes
 app.use('/api', workspaceRoutes);
@@ -33,6 +36,7 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/marketplace', marketplaceRoutes);
 app.use('/api/boardroom', boardroomRoutes);
 app.use('/api/desktop', desktopRoutes);
+app.use('/api/gsc', gscRoutes);
 
 // Static assets
 const publicDir = path.join(appRootDir, 'public');
@@ -110,6 +114,7 @@ const HOST = process.env.HOST || '127.0.0.1';
 const server = app.listen(PORT, HOST, () => {
   console.log(`[RuXt 2.1 Engine] Server running securely on http://${HOST}:${PORT}`);
   console.log(`[RuXt Hub] Marketplace Portal live at http://${HOST}:${PORT}/hub`);
+  startGscScheduler();
 });
 
 server.on('error', (err) => {

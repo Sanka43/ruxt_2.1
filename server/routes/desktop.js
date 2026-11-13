@@ -64,14 +64,15 @@ router.post('/execute-live', async (req, res) => {
 // 2b. Start an autonomous vision-based computer use task
 router.post('/execute-vision', async (req, res) => {
   try {
-    const { goal, settings = {} } = req.body;
+    const { goal, settings = {}, sessionId = null } = req.body;
     if (!goal) {
       return res.status(400).json({ error: 'goal is required' });
     }
 
     const job = await startVisionDesktopExecution({
       goal,
-      settings
+      settings,
+      sessionId
     });
 
     res.json({

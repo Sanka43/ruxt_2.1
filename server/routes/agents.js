@@ -186,7 +186,7 @@ const DOMAIN_DEFINITIONS = [
       'site', 'website', 'page', 'dashboard', 'app', 'application', 'dev', 'develop', 'development',
       'developmet', 'coding', 'code', 'software', 'interface', 'vite', 'node', 'fullstack'
     ],
-    matchingSlugs: ['julian-vance', 'noah-reed'],
+    matchingSlugs: ['julian-vance', 'damon-cole'],
     conflictingSlugs: ['elena-voss-chess']
   },
   {
@@ -196,7 +196,7 @@ const DOMAIN_DEFINITIONS = [
       'cloud', 'devops', 'docker', 'kubernetes', 'k8s', 'aws', 'azure', 'gcp', 'ci/cd',
       'deploy', 'deployment', 'server', 'infrastructure', 'infra', 'linux', 'security', 'pipeline'
     ],
-    matchingSlugs: ['noah-reed', 'julian-vance'],
+    matchingSlugs: ['damon-cole', 'julian-vance'],
     conflictingSlugs: ['elena-voss-chess']
   },
   {
@@ -207,7 +207,7 @@ const DOMAIN_DEFINITIONS = [
       'auditing', 'profit', 'valuation', 'forecast', 'fiscal', 'investment', 'balance sheet',
       'cash flow', 'earnings', 'money', 'cost'
     ],
-    matchingSlugs: ['maya-brooks', 'numbers', 'noah-reed'],
+    matchingSlugs: ['noah-reed', 'numbers'],
     conflictingSlugs: ['elena-voss-chess', 'julian-vance']
   },
   {
@@ -217,7 +217,7 @@ const DOMAIN_DEFINITIONS = [
       'data', 'analytics', 'analysis', 'quantitative', 'spreadsheet', 'excel', 'numbers',
       'metrics', 'formula', 'statistics', 'math', 'csv', 'calculation', 'table', 'computation'
     ],
-    matchingSlugs: ['numbers', 'maya-brooks'],
+    matchingSlugs: ['numbers'],
     conflictingSlugs: ['elena-voss-chess']
   },
   {
@@ -227,7 +227,18 @@ const DOMAIN_DEFINITIONS = [
       'legal', 'law', 'lawyer', 'contract', 'contracts', 'agreement', 'compliance',
       'terms', 'nda', 'regulation', 'dispute', 'counsel', 'license', 'gdpr', 'policy'
     ],
-    matchingSlugs: ['marcus-sterling', 'noah-reed'],
+    matchingSlugs: ['noah-reed'],
+    conflictingSlugs: ['elena-voss-chess']
+  },
+  {
+    id: 'seo_analytics',
+    label: 'Search Console & Live Traffic',
+    tokens: [
+      'seo', 'search console', 'gsc', 'google search', 'traffic', 'analytics', 'live traffic',
+      'keywords', 'ranking', 'impressions', 'clicks', 'ctr', 'indexing', 'sitemap', 'crawler',
+      'googlebot', 'robots.txt', 'serp', 'backlinks', 'organic', 'search', 'audit', 'report'
+    ],
+    matchingSlugs: ['search-console-manager'],
     conflictingSlugs: ['elena-voss-chess']
   },
   {

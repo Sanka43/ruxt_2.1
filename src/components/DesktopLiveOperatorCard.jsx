@@ -265,30 +265,30 @@ export default function DesktopLiveOperatorCard({ desktopAction }) {
   };
 
   return (
-    <div className="mt-4 rounded-2xl bg-slate-900/90 border border-cyan-500/30 overflow-hidden shadow-2xl backdrop-blur-md">
+    <div className="mt-4 rounded-2xl bg-white dark:bg-slate-900/90 border border-cyan-500/30 overflow-hidden shadow-md dark:shadow-2xl backdrop-blur-md">
       {/* Top Banner Header */}
-      <div className="p-4 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border-b border-slate-800 flex items-center justify-between">
+      <div className="p-4 bg-slate-50 dark:bg-gradient-to-r dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-md shadow-cyan-500/10">
+          <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-500 dark:text-cyan-400 shadow-md shadow-cyan-500/10">
             <Activity className="w-5 h-5 animate-pulse" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-sm font-bold text-white tracking-wide">
+              <span className="text-sm font-bold text-slate-900 dark:text-white tracking-wide">
                 {jobState?.taskTitle || 'Live Desktop Task Execution'}
               </span>
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
                 status === 'completed'
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                  ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40'
                   : status === 'aborted'
-                  ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
-                  : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 animate-pulse'
+                  ? 'bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-500/40'
+                  : 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border border-cyan-500/40 animate-pulse'
               }`}>
                 {status === 'completed' ? '✓ Completed' : status === 'aborted' ? 'Aborted' : '⚡ Live on Work'}
               </span>
             </div>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Operating <strong className="text-cyan-300">{jobState?.appName || 'Desktop App'}</strong> • Zero Pre-Made Files (100% Dynamic AI Synthesis)
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Operating <strong className="text-cyan-600 dark:text-cyan-300">{jobState?.appName || 'Desktop App'}</strong> • Zero Pre-Made Files (100% Dynamic AI Synthesis)
             </p>
           </div>
         </div>
@@ -298,7 +298,7 @@ export default function DesktopLiveOperatorCard({ desktopAction }) {
           {status === 'running' && (
             <button
               onClick={handleAbort}
-              className="px-3 py-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 text-xs font-semibold flex items-center gap-1.5 transition"
+              className="px-3 py-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/30 text-rose-600 dark:text-rose-300 border border-rose-500/30 text-xs font-semibold flex items-center gap-1.5 transition"
               title="Stop desktop operation"
             >
               <Square className="w-3.5 h-3.5 fill-current" />
@@ -307,19 +307,19 @@ export default function DesktopLiveOperatorCard({ desktopAction }) {
           )}
           <button
             onClick={() => setShowScriptModal(!showScriptModal)}
-            className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition"
+            className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition"
             title="View dynamically generated script"
           >
-            <Code className="w-3.5 h-3.5 text-cyan-400" />
+            <Code className="w-3.5 h-3.5 text-cyan-500 dark:text-cyan-400" />
             Script
           </button>
           {jobState?.jobDir && (
             <button
               onClick={handleOpenExplorer}
-              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition"
+              className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition"
               title="Open folder in Windows Explorer"
             >
-              <FolderOpen className="w-3.5 h-3.5 text-amber-400" />
+              <FolderOpen className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
               Files
             </button>
           )}
@@ -327,7 +327,7 @@ export default function DesktopLiveOperatorCard({ desktopAction }) {
       </div>
 
       {/* Progress Bar */}
-      <div className="w-full bg-slate-950 h-1.5 overflow-hidden">
+      <div className="w-full bg-slate-200 dark:bg-slate-950 h-1.5 overflow-hidden">
         <div 
           className="h-full bg-gradient-to-r from-cyan-500 via-sky-400 to-emerald-400 transition-all duration-300"
           style={{ width: `${progress}%` }}

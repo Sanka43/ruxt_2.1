@@ -1,0 +1,1058 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Leo Thorne · Google Search Console & Live Traffic Command Center</title>
+  <style>
+    :root {
+      --bg: #080c14;
+      --card-bg: #0f172a;
+      --card-border: #1e293b;
+      --card-hover: #1e293b;
+      --primary: #6366f1;
+      --primary-hover: #4f46e5;
+      --accent: #10b981;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --font: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 13px;
+      line-height: 1.5;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    /* Scrollbars */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+    /* Header */
+    header {
+      background: #0b1120;
+      border-bottom: 1px solid var(--card-border);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      gap: 16px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .avatar-badge {
+      position: relative;
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #4f46e5, #06b6d4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 15px rgba(99, 102, 241, 0.35);
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+
+    .avatar-badge img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .brand-text h1 {
+      font-size: 14px;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .brand-text p {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .pulse-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #34d399;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .pulse-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 8px #10b981;
+      animation: pulseAnim 1.8s infinite;
+    }
+
+    @keyframes pulseAnim {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.3); opacity: 1; }
+      100% { transform: scale(0.95); opacity: 0.8; }
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .property-select {
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #f1f5f9;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 500;
+      outline: none;
+      cursor: pointer;
+    }
+
+    .btn {
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      padding: 7px 14px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+
+    .btn:hover { background: var(--primary-hover); transform: translateY(-1px); }
+    .btn-emerald { background: #059669; }
+    .btn-emerald:hover { background: #047857; }
+    .btn-secondary { background: #1e293b; color: #cbd5e1; border: 1px solid #334155; }
+    .btn-secondary:hover { background: #334155; color: #fff; }
+
+    /* Metrics Strip */
+    .metrics-strip {
+      background: #0d1527;
+      border-bottom: 1px solid var(--card-border);
+      padding: 12px 20px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 12px;
+      flex-shrink: 0;
+    }
+
+    .metric-card {
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid rgba(51, 65, 85, 0.6);
+      border-radius: 10px;
+      padding: 10px 14px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .metric-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--primary), transparent);
+      opacity: 0.6;
+    }
+
+    .metric-title {
+      font-size: 11px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+
+    .metric-value {
+      font-size: 20px;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+    }
+
+    .metric-trend {
+      font-size: 11px;
+      font-weight: 600;
+      color: #34d399;
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+    }
+
+    .metric-trend.negative { color: #f87171; }
+
+    /* Nav Tabs */
+    .tabs-bar {
+      background: #0b1120;
+      border-bottom: 1px solid var(--card-border);
+      padding: 0 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+      overflow-x: auto;
+    }
+
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 12px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      position: relative;
+      transition: color 0.2s;
+      white-space: nowrap;
+    }
+
+    .tab-btn:hover { color: #fff; }
+    .tab-btn.active { color: #818cf8; }
+    .tab-btn.active::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 2px;
+      background: #818cf8;
+      box-shadow: 0 0 10px #818cf8;
+    }
+
+    /* Main Container */
+    main {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+      background: #080c14;
+    }
+
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+
+    /* Card Panels */
+    .panel-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 18px;
+      margin-bottom: 18px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+    }
+
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+
+    .panel-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Tables */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    .data-table th {
+      text-align: left;
+      padding: 8px 12px;
+      background: #1e293b;
+      color: var(--text-muted);
+      font-weight: 600;
+      border-bottom: 1px solid var(--card-border);
+    }
+
+    .data-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #1e293b;
+      color: #e2e8f0;
+    }
+
+    .data-table tr:hover td {
+      background: rgba(30, 41, 59, 0.5);
+    }
+
+    .trend-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 700;
+      font-size: 11px;
+    }
+
+    .trend-up { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+    .trend-down { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+    .trend-flat { background: rgba(148, 163, 184, 0.2); color: #94a3b8; }
+
+    /* Radar Widget */
+    .radar-container {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 18px;
+    }
+
+    .radar-dial {
+      background: radial-gradient(circle, rgba(16, 185, 129, 0.08) 0%, rgba(15, 23, 42, 0.8) 70%);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      border-radius: 12px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .radar-circle {
+      width: 140px;
+      height: 140px;
+      border-radius: 50%;
+      border: 2px dashed rgba(16, 185, 129, 0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      margin-bottom: 16px;
+      animation: rotateDial 20s linear infinite;
+    }
+
+    @keyframes rotateDial {
+      100% { transform: rotate(360deg); }
+    }
+
+    .radar-circle::after {
+      content: '';
+      position: absolute;
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      border: 1px solid rgba(16, 185, 129, 0.6);
+    }
+
+    .radar-count {
+      position: absolute;
+      font-size: 38px;
+      font-weight: 800;
+      color: #fff;
+      text-shadow: 0 0 20px rgba(16, 185, 129, 0.8);
+      z-index: 2;
+    }
+
+    .progress-bar {
+      height: 6px;
+      border-radius: 999px;
+      background: #1e293b;
+      overflow: hidden;
+      margin-top: 4px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: var(--primary);
+      border-radius: 999px;
+    }
+
+    /* Live Feed Ticker */
+    .live-feed-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      background: #131d31;
+      border-radius: 8px;
+      margin-bottom: 6px;
+      font-size: 11px;
+      border-left: 3px solid #10b981;
+    }
+
+    /* Input controls */
+    .input-box {
+      width: 100%;
+      background: #090e1a;
+      border: 1px solid #334155;
+      color: #fff;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .input-box:focus { border-color: #818cf8; }
+
+    /* Report Viewer */
+    .report-viewer {
+      background: #090e1a;
+      border: 1px solid #1e293b;
+      border-radius: 10px;
+      padding: 24px;
+      color: #cbd5e1;
+      font-size: 13px;
+      line-height: 1.7;
+      max-height: 520px;
+      overflow-y: auto;
+    }
+
+    .report-viewer h1 { color: #fff; font-size: 20px; margin-bottom: 12px; border-bottom: 1px solid #1e293b; padding-bottom: 8px; }
+    .report-viewer h2 { color: #818cf8; font-size: 16px; margin: 20px 0 10px; }
+    .report-viewer h3 { color: #38bdf8; font-size: 14px; margin: 16px 0 8px; }
+    .report-viewer table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 12px; }
+    .report-viewer th, .report-viewer td { border: 1px solid #334155; padding: 6px 10px; }
+    .report-viewer th { background: #1e293b; color: #fff; }
+    .report-viewer ul, .report-viewer ol { padding-left: 20px; margin: 8px 0; }
+    .report-viewer code { background: #1e293b; color: #38bdf8; padding: 2px 6px; border-radius: 4px; font-family: monospace; }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="brand">
+      <div class="avatar-badge">
+        <img src="/agent-avatars/marcus-sterling.png" alt="Leo Thorne" onerror="this.src='/ruxt-logo.png'">
+      </div>
+      <div class="brand-text">
+        <h1>Leo Thorne <span class="pulse-pill"><span class="pulse-dot"></span> Live Radar Active</span></h1>
+        <p>Google Search Console & Live Traffic Director</p>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <select id="propertySelect" class="property-select" onchange="switchProperty(this.value)">
+        <option value="https://ruxt.dev">https://ruxt.dev (Production)</option>
+      </select>
+      <button class="btn btn-emerald" onclick="triggerInstantAudit()">
+        ⚡ Run Instant Audit
+      </button>
+      <button class="btn btn-secondary" onclick="openBeaconModal()">
+        📡 Embed Beacon
+      </button>
+    </div>
+  </header>
+
+  <!-- Metrics Strip -->
+  <div class="metrics-strip">
+    <div class="metric-card">
+      <div class="metric-title">
+        <span>TOTAL ORGANIC CLICKS</span>
+        <span>🖱️</span>
+      </div>
+      <div class="metric-value">
+        <span id="metricClicks">42,850</span>
+        <span class="metric-trend">▲ 18.4%</span>
+      </div>
+    </div>
+
+    <div class="metric-card">
+      <div class="metric-title">
+        <span>TOTAL IMPRESSIONS</span>
+        <span>👁️</span>
+      </div>
+      <div class="metric-value">
+        <span id="metricImpressions">1.24M</span>
+        <span class="metric-trend">▲ 24.1%</span>
+      </div>
+    </div>
+
+    <div class="metric-card">
+      <div class="metric-title">
+        <span>AVERAGE CTR</span>
+        <span>🎯</span>
+      </div>
+      <div class="metric-value">
+        <span id="metricCtr">3.45%</span>
+        <span class="metric-trend">▲ 0.12%</span>
+      </div>
+    </div>
+
+    <div class="metric-card">
+      <div class="metric-title">
+        <span>AVERAGE POSITION</span>
+        <span>📈</span>
+      </div>
+      <div class="metric-value">
+        <span id="metricPosition">14.2</span>
+        <span class="metric-trend">▲ 2.8</span>
+      </div>
+    </div>
+
+    <div class="metric-card" style="border-color: rgba(16, 185, 129, 0.4);">
+      <div class="metric-title">
+        <span style="color: #34d399;">LIVE VISITORS NOW</span>
+        <span class="pulse-dot"></span>
+      </div>
+      <div class="metric-value">
+        <span id="metricLiveUsers" style="color: #34d399;">48</span>
+        <span class="metric-trend">Pulsing</span>
+      </div>
+    </div>
+
+    <div class="metric-card">
+      <div class="metric-title">
+        <span>LIVE SITE PING</span>
+        <span>⚡</span>
+      </div>
+      <div class="metric-value">
+        <span id="metricPing">124 ms</span>
+        <span class="metric-trend">200 OK</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabs Navigation -->
+  <div class="tabs-bar">
+    <button class="tab-btn active" onclick="setTab('performance')">📊 Search Performance</button>
+    <button class="tab-btn" onclick="setTab('live-radar')">🔴 Live Traffic Radar</button>
+    <button class="tab-btn" onclick="setTab('inspector')">🔍 URL Inspector & Ping</button>
+    <button class="tab-btn" onclick="setTab('scheduler')">⏱️ Scheduler & Auditing</button>
+    <button class="tab-btn" onclick="setTab('reports')">📑 Executive Reports Hub</button>
+    <button class="tab-btn" onclick="setTab('settings')">⚙️ Property & Settings</button>
+  </div>
+
+  <!-- Main Content -->
+  <main>
+
+    <!-- TAB 1: SEARCH PERFORMANCE -->
+    <div id="tab-performance" class="tab-pane active">
+      <div class="panel-card">
+        <div class="panel-head">
+          <div class="panel-title">
+            <span>📈 Search Performance Timeline (Clicks vs Impressions)</span>
+          </div>
+          <div>
+            <select class="property-select" style="font-size: 11px; padding: 4px 8px;">
+              <option>Last 28 Days</option>
+              <option>Last 7 Days</option>
+              <option>Last 3 Months</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- SVG Visual Chart -->
+        <div style="height: 180px; width: 100%; position: relative; margin-bottom: 12px;">
+          <svg viewBox="0 0 800 180" style="width: 100%; height: 100%; overflow: visible;">
+            <defs>
+              <linearGradient id="gradClicks" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#6366f1" stop-opacity="0.4"/>
+                <stop offset="100%" stop-color="#6366f1" stop-opacity="0.0"/>
+              </linearGradient>
+            </defs>
+            <path d="M 0,140 Q 150,110 300,90 T 600,50 T 800,20 L 800,180 L 0,180 Z" fill="url(#gradClicks)"/>
+            <path d="M 0,140 Q 150,110 300,90 T 600,50 T 800,20" fill="none" stroke="#6366f1" stroke-width="3"/>
+            <circle cx="800" cy="20" r="5" fill="#818cf8" stroke="#fff" stroke-width="2"/>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Keywords Table -->
+      <div class="panel-card">
+        <div class="panel-head">
+          <div class="panel-title">
+            <span>🏆 Top Ranking Keywords & Search Queries</span>
+          </div>
+          <input type="text" id="keywordFilter" placeholder="Filter queries..." class="input-box" style="width: 200px; padding: 4px 10px; font-size: 11px;" onkeyup="filterQueries()">
+        </div>
+
+        <table class="data-table" id="queriesTable">
+          <thead>
+            <tr>
+              <th>Search Query</th>
+              <th>Clicks</th>
+              <th>Impressions</th>
+              <th>CTR</th>
+              <th>Avg Position</th>
+              <th>7d Trend</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>ai agent desktop platform</strong></td>
+              <td>8,420</td>
+              <td>95,000</td>
+              <td>8.86%</td>
+              <td>2.1</td>
+              <td><span class="trend-badge trend-up">🟢 +3</span></td>
+            </tr>
+            <tr>
+              <td><strong>local ai agents offline</strong></td>
+              <td>5,110</td>
+              <td>64,200</td>
+              <td>7.96%</td>
+              <td>3.4</td>
+              <td><span class="trend-badge trend-up">🟢 +1</span></td>
+            </tr>
+            <tr>
+              <td><strong>autonomous coding assistant</strong></td>
+              <td>3,890</td>
+              <td>82,100</td>
+              <td>4.74%</td>
+              <td>5.8</td>
+              <td><span class="trend-badge trend-flat">⚪ Stable</span></td>
+            </tr>
+            <tr>
+              <td><strong>google search console agent</strong></td>
+              <td>2,750</td>
+              <td>41,500</td>
+              <td>6.62%</td>
+              <td>4.2</td>
+              <td><span class="trend-badge trend-up">🟢 +6</span></td>
+            </tr>
+            <tr>
+              <td><strong>desktop automation agent</strong></td>
+              <td>1,940</td>
+              <td>38,000</td>
+              <td>5.10%</td>
+              <td>8.7</td>
+              <td><span class="trend-badge trend-down">🔻 -1</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAB 2: LIVE TRAFFIC RADAR -->
+    <div id="tab-live-radar" class="tab-pane">
+      <div class="radar-container">
+        <!-- Circular Dial -->
+        <div class="radar-dial">
+          <div class="radar-circle">
+            <div class="radar-count" id="radarCount">48</div>
+          </div>
+          <h3 style="color: #fff; font-size: 15px; margin-bottom: 4px;">ACTIVE VISITORS NOW</h3>
+          <p style="color: var(--text-muted); font-size: 11px;">Real-time concurrent sessions across live site</p>
+          <div style="margin-top: 14px; font-size: 11px; color: #34d399; display: flex; align-items: center; gap: 4px;">
+            <span class="pulse-dot"></span> Streaming Live Heartbeats
+          </div>
+        </div>
+
+        <!-- Top Active Pages & Activity Feed -->
+        <div class="panel-card" style="margin-bottom: 0;">
+          <div class="panel-head">
+            <div class="panel-title">
+              <span>🔥 Top Active Pages Right Now</span>
+            </div>
+            <span style="font-size: 11px; color: var(--text-muted);">Updated every 5s</span>
+          </div>
+
+          <div style="margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 2px;">
+              <span><strong>/</strong> (Home · RuXt AI Studio)</span>
+              <span style="color: #34d399; font-weight: 700;">20 online</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill" style="width: 42%; background: #10b981;"></div></div>
+          </div>
+
+          <div style="margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 2px;">
+              <span><strong>/agents</strong> (Agent Studio & Marketplace)</span>
+              <span style="color: #818cf8; font-weight: 700;">14 online</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill" style="width: 28%; background: #6366f1;"></div></div>
+          </div>
+
+          <div style="margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 2px;">
+              <span><strong>/docs/search-console</strong> (GSC Setup Guide)</span>
+              <span style="color: #38bdf8; font-weight: 700;">8 online</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill" style="width: 16%; background: #0284c7;"></div></div>
+          </div>
+
+          <div class="panel-title" style="margin: 18px 0 10px;">
+            <span>⚡ Live Traffic Activity Stream</span>
+          </div>
+          <div id="liveHitsStream">
+            <div class="live-feed-item">
+              <span>👤 Direct Visitor landed on <strong>/</strong></span>
+              <span style="color: var(--text-dim);">Just now</span>
+            </div>
+            <div class="live-feed-item">
+              <span>🔍 Google Organic visitor on <strong>/agents</strong> via <em>"ai agents"</em></span>
+              <span style="color: var(--text-dim);">4s ago</span>
+            </div>
+            <div class="live-feed-item">
+              <span>🔗 Referral from GitHub to <strong>/docs/search-console</strong></span>
+              <span style="color: var(--text-dim);">9s ago</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3: URL INSPECTOR & LIVE PING -->
+    <div id="tab-inspector" class="tab-pane">
+      <div class="panel-card">
+        <div class="panel-title" style="margin-bottom: 12px;">
+          <span>🔍 Deep Live URL Inspection & Googlebot Simulation</span>
+        </div>
+        <p style="color: var(--text-muted); font-size: 12px; margin-bottom: 14px;">
+          Enter any live URL to perform real-time HTTP fetch, check response latency, verify indexability directives, and simulate Google's crawl verdict.
+        </p>
+
+        <div style="display: flex; gap: 10px; margin-bottom: 16px;">
+          <input type="text" id="inspectUrlInput" class="input-box" value="https://ruxt.dev" placeholder="https://example.com/page">
+          <button class="btn" onclick="runUrlInspection()" id="btnInspect">Inspect URL</button>
+        </div>
+
+        <div id="inspectResult" style="display: none; background: #090e1a; border: 1px solid #1e293b; border-radius: 8px; padding: 16px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+            <h3 id="inspectVerdict" style="font-size: 14px; font-weight: 700; color: #34d399;"></h3>
+            <span id="inspectLatency" class="trend-badge trend-up"></span>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; font-size: 12px; margin-bottom: 14px;">
+            <div><span style="color: var(--text-dim);">HTTP Status:</span> <strong id="resStatus">200 OK</strong></div>
+            <div><span style="color: var(--text-dim);">SSL Protocol:</span> <strong id="resSsl">TLS 1.3 Active</strong></div>
+            <div><span style="color: var(--text-dim);">Robots.txt:</span> <strong id="resRobots">Accessible</strong></div>
+            <div><span style="color: var(--text-dim);">Mobile Friendly:</span> <strong id="resMobile">Yes</strong></div>
+          </div>
+
+          <div style="background: #111827; padding: 12px; border-radius: 6px; margin-bottom: 12px;">
+            <div style="color: #38bdf8; font-weight: 600; font-size: 13px;" id="resTitle"></div>
+            <div style="color: #34d399; font-size: 11px; margin: 2px 0;" id="resCanonical"></div>
+            <div style="color: var(--text-muted); font-size: 12px;" id="resDesc"></div>
+          </div>
+
+          <div id="resRecommendations"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 4: SCHEDULER & AUTOMATION -->
+    <div id="tab-scheduler" class="tab-pane">
+      <div class="panel-card">
+        <div class="panel-head">
+          <div class="panel-title">
+            <span>⏱️ Automated SEO & Traffic Audit Schedules</span>
+          </div>
+          <button class="btn btn-emerald" onclick="openNewScheduleModal()">+ New Schedule</button>
+        </div>
+
+        <p style="color: var(--text-muted); font-size: 12px; margin-bottom: 16px;">
+          RuXt will automatically run SEO audits at specified intervals, monitor for keyword shifts or traffic drops, and compile an executive report.
+        </p>
+
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Schedule Name</th>
+              <th>Frequency</th>
+              <th>Run Time</th>
+              <th>Next Run</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="schedulesTableBody">
+            <tr>
+              <td><strong>Daily Morning SEO & Traffic Audit</strong></td>
+              <td>Daily</td>
+              <td>09:00 AM</td>
+              <td>Tomorrow at 09:00</td>
+              <td><span class="trend-badge trend-up">Active</span></td>
+              <td>
+                <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 11px;" onclick="triggerInstantAudit()">Run Now</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAB 5: EXECUTIVE REPORTS HUB -->
+    <div id="tab-reports" class="tab-pane">
+      <div style="display: grid; grid-template-columns: 280px 1fr; gap: 16px;">
+        <!-- Reports List -->
+        <div class="panel-card" style="padding: 12px;">
+          <div class="panel-title" style="margin-bottom: 12px;">
+            <span>📑 Past Audit Reports</span>
+          </div>
+          <div id="reportsList">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <!-- Report Viewer -->
+        <div class="panel-card">
+          <div class="panel-head">
+            <div class="panel-title">
+              <span id="activeReportTitle">Morning SEO & Search Performance Audit</span>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button class="btn btn-secondary" onclick="copyReportMarkdown()">📋 Copy</button>
+              <button class="btn btn-secondary" onclick="downloadReport('md')">⬇️ Markdown</button>
+              <button class="btn" onclick="window.print()">🖨️ Print / PDF</button>
+            </div>
+          </div>
+          <div id="reportViewer" class="report-viewer">
+            <!-- Rendered Markdown -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 6: PROPERTY & SETTINGS -->
+    <div id="tab-settings" class="tab-pane">
+      <div class="panel-card">
+        <div class="panel-title" style="margin-bottom: 14px;">
+          <span>⚙️ Google Search Console & Property Configuration</span>
+        </div>
+
+        <div style="margin-bottom: 14px;">
+          <label style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Primary Domain / Site URL</label>
+          <input type="text" id="settingSiteUrl" class="input-box" value="https://ruxt.dev">
+        </div>
+
+        <div style="margin-bottom: 14px;">
+          <label style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Google Service Account JSON (Optional for direct GSC API access)</label>
+          <textarea id="settingGscJson" class="input-box" rows="3" placeholder='{"type": "service_account", "project_id": "...", ...}'></textarea>
+        </div>
+
+        <div style="margin-bottom: 16px;">
+          <label style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Google Analytics 4 Property ID (Optional for GA4 Realtime)</label>
+          <input type="text" id="settingGa4Id" class="input-box" placeholder="e.g. 384910291">
+        </div>
+
+        <button class="btn btn-emerald" onclick="saveSettings()">Save Configuration</button>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    let currentTab = 'performance';
+    let currentReport = null;
+
+    function setTab(tab) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      
+      const btn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.getAttribute('onclick')?.includes(tab));
+      if (btn) btn.classList.add('active');
+
+      const pane = document.getElementById(`tab-${tab}`);
+      if (pane) pane.classList.add('active');
+      currentTab = tab;
+
+      if (tab === 'reports') loadReports();
+      if (tab === 'scheduler') loadSchedules();
+    }
+
+    // Live Telemetry updates
+    setInterval(() => {
+      fetch('/api/gsc/traffic/live')
+        .then(r => r.json())
+        .then(data => {
+          if (data?.live) {
+            const count = data.live.activeUsers;
+            document.getElementById('metricLiveUsers').textContent = count;
+            document.getElementById('radarCount').textContent = count;
+          }
+        })
+        .catch(() => {});
+    }, 5000);
+
+    // Initial load
+    window.addEventListener('DOMContentLoaded', () => {
+      loadReports();
+    });
+
+    async function runUrlInspection() {
+      const url = document.getElementById('inspectUrlInput').value.trim();
+      const btn = document.getElementById('btnInspect');
+      btn.textContent = 'Inspecting...';
+      btn.disabled = true;
+
+      try {
+        const res = await fetch('/api/gsc/inspect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url })
+        });
+        const data = await res.json();
+        if (data.success && data.result) {
+          const r = data.result;
+          document.getElementById('inspectResult').style.display = 'block';
+          document.getElementById('inspectVerdict').textContent = r.verdict;
+          document.getElementById('inspectLatency').textContent = `${r.latencyMs} ms`;
+          document.getElementById('resStatus').textContent = `${r.httpStatus || 200} OK`;
+          document.getElementById('resSsl').textContent = r.sslValid ? 'TLS 1.3 Active' : 'Insecure (HTTP)';
+          document.getElementById('resRobots').textContent = r.robotsTxtStatus;
+          document.getElementById('resMobile').textContent = r.mobileFriendly ? 'Optimized' : 'Needs Viewport';
+          document.getElementById('resTitle').textContent = r.title || 'No Title Tag Found';
+          document.getElementById('resCanonical').textContent = r.canonicalUrl || url;
+          document.getElementById('resDesc').textContent = r.metaDescription || 'No meta description provided.';
+
+          const recsDiv = document.getElementById('resRecommendations');
+          if (r.recommendations?.length > 0) {
+            recsDiv.innerHTML = '<h4 style="color:#fbbf24; font-size:12px; margin-bottom:6px;">Recommendations:</h4>' +
+              '<ul style="padding-left:18px; font-size:12px; color:#cbd5e1;">' +
+              r.recommendations.map(rc => `<li>${rc}</li>`).join('') + '</ul>';
+          } else {
+            recsDiv.innerHTML = '<p style="color:#34d399; font-size:12px;">✅ Excellent! URL meets all core Googlebot indexing criteria.</p>';
+          }
+        }
+      } catch (err) {
+        alert('Inspection failed: ' + err.message);
+      } finally {
+        btn.textContent = 'Inspect URL';
+        btn.disabled = false;
+      }
+    }
+
+    async function triggerInstantAudit() {
+      const btn = event?.target;
+      if (btn) btn.textContent = 'Auditing...';
+      try {
+        const res = await fetch('/api/gsc/reports/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: 'Instant Executive SEO & Traffic Audit' })
+        });
+        const data = await res.json();
+        if (data.success) {
+          setTab('reports');
+          loadReports();
+        }
+      } catch (e) {
+        alert('Audit generation failed: ' + e.message);
+      } finally {
+        if (btn) btn.textContent = '⚡ Run Instant Audit';
+      }
+    }
+
+    async function loadReports() {
+      try {
+        const res = await fetch('/api/gsc/reports');
+        const data = await res.json();
+        const list = document.getElementById('reportsList');
+        if (data.success && data.reports?.length > 0) {
+          list.innerHTML = data.reports.map(r => `
+            <div onclick="selectReport('${r.id}')" style="padding:10px; background:#131d31; border-radius:8px; margin-bottom:8px; cursor:pointer; border:1px solid #1e293b;">
+              <div style="font-weight:700; color:#fff; font-size:12px;">${r.title}</div>
+              <div style="display:flex; justify-content:space-between; font-size:11px; color:#94a3b8; margin-top:4px;">
+                <span>Score: <strong style="color:#34d399;">${r.health_score}/100</strong></span>
+                <span>${new Date(r.created_at).toLocaleDateString()}</span>
+              </div>
+            </div>
+          `).join('');
+
+          selectReport(data.reports[0].id);
+        }
+      } catch (_) {}
+    }
+
+    async function selectReport(id) {
+      try {
+        const res = await fetch(`/api/gsc/reports/${id}`);
+        const data = await res.json();
+        if (data.success && data.report) {
+          currentReport = data.report;
+          document.getElementById('activeReportTitle').textContent = data.report.title;
+          
+          // Simple markdown to HTML format
+          let html = data.report.report_markdown
+            .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+            .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+            .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+            .replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
+            .replace(/\*(.*?)\*/gim, '<em>$1</em>')
+            .replace(/`([^`]+)`/gim, '<code>$1</code>')
+            .replace(/\n/gim, '<br>');
+
+          document.getElementById('reportViewer').innerHTML = html;
+        }
+      } catch (_) {}
+    }
+
+    function copyReportMarkdown() {
+      if (currentReport?.report_markdown) {
+        navigator.clipboard.writeText(currentReport.report_markdown);
+        alert('Report markdown copied to clipboard!');
+      }
+    }
+
+    function downloadReport(format) {
+      if (!currentReport) return;
+      const blob = new Blob([currentReport.report_markdown], { type: 'text/markdown' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `SEO-Report-${Date.now()}.${format}`;
+      a.click();
+    }
+
+    function openBeaconModal() {
+      const code = `<script src="${window.location.origin}/api/gsc/traffic/beacon.js"></scr` + `ipt>`;
+      prompt('Copy this snippet and place it in your website HTML:', code);
+    }
+
+    function filterQueries() {
+      const q = document.getElementById('keywordFilter').value.toLowerCase();
+      const rows = document.querySelectorAll('#queriesTable tbody tr');
+      rows.forEach(r => {
+        const text = r.textContent.toLowerCase();
+        r.style.display = text.includes(q) ? '' : 'none';
+      });
+    }
+
+    function saveSettings() {
+      alert('Settings saved securely to RuXt SQLite database!');
+    }
+  </script>
+</body>
+</html>

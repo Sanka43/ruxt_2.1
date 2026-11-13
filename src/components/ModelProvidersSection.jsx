@@ -110,8 +110,8 @@ export default function ModelProvidersSection({
       {/* Top Header (Matching Image 1) */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-white tracking-tight">Model providers and accounts</h2>
-          <p className="text-xs text-slate-400 mt-1">
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Model providers and accounts</h2>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             Connect the AI tools that power your bots. Accounts, setup and updates, all in one place.
           </p>
         </div>

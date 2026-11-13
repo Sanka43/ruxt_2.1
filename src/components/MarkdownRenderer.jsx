@@ -10,14 +10,14 @@ marked.use({
       const language = (lang || 'code').toLowerCase();
       const encoded = encodeURIComponent(text);
       return `
-        <div class="my-3.5 rounded-xl overflow-hidden border border-slate-800 bg-slate-950 shadow-md">
-          <div class="flex items-center justify-between px-3.5 py-1.5 bg-slate-900/90 border-b border-slate-800 text-[11px] font-mono text-slate-400">
-            <span class="font-bold text-indigo-400 uppercase tracking-wider text-[10px]">${language}</span>
-            <button type="button" data-copy-code="${encoded}" class="px-2 py-0.5 rounded text-[10px] font-sans font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer">
+        <div class="my-3.5 rounded-xl overflow-hidden border shadow-sm transition-colors" style="background-color: var(--theme-code-bg); border-color: var(--theme-border);">
+          <div class="flex items-center justify-between px-3.5 py-1.5 border-b text-[11px] font-mono" style="background-color: var(--theme-card-subtle); border-color: var(--theme-border); color: var(--theme-text-muted);">
+            <span class="font-bold uppercase tracking-wider text-[10px]" style="color: var(--theme-accent);">${language}</span>
+            <button type="button" data-copy-code="${encoded}" class="px-2 py-0.5 rounded text-[10px] font-sans font-medium transition cursor-pointer hover:opacity-80" style="background-color: var(--theme-card-solid); border: 1px solid var(--theme-border); color: var(--theme-text-main);">
               Copy Code
             </button>
           </div>
-          <pre class="p-3.5 overflow-x-auto text-[12px] font-mono text-emerald-300/90 leading-relaxed font-normal"><code>${text}</code></pre>
+          <pre class="p-3.5 overflow-x-auto text-[12px] font-mono leading-relaxed font-normal" style="color: var(--theme-text-main);"><code>${text}</code></pre>
         </div>
       `;
     }

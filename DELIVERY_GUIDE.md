@@ -72,6 +72,56 @@ ruxt_2.1/
 
 ---
 
+## 🔄 5. Install කරගෙන සිටින User කෙනෙකුට Updates ලබා දෙන්නේ කෙසේද? (Update Delivery Strategy)
+
+දැනටමත් ඔබේ App එක install කරගෙන සිටින client කෙනෙකුට අලුත් update එකක් (features, bug fixes) ලබා දීමට ක්‍රම 2ක් පවතී:
+
+### 🌟 ක්‍රමය A: Seamless In-App Auto-Update (නිර්දේශිත ස්වයංක්‍රීය ක්‍රමය)
+RuXt 2.1 තුළ දැන් **GitHub Releases Auto-Updater** (`electron-updater`) සම්පූර්ණයෙන්ම සවි කර ඇත.
+
+1. **Auto-Detection:** 
+   - Client විසින් app එක open කරන විට හෝ Settings > **Software Updates** ටැබ් එකට ගොස් **"Check for Updates"** click කල විට, GitHub Public Repo එකේ (`Sanka43/ruxt_2.1`) අලුත් version එකක් තිබේදැයි ස්වයංක්‍රීයව පරික්ෂා කෙරේ.
+2. **Background Download:**
+   - අලුත් version එකක් දුටු විට "New Version Available: vX.X.X" ලෙස UI එකේ දිස්වන අතර, **"Download Update"** click කල විට background එකෙන් progress bar එකක් සහිතව download වේ.
+3. **One-Click Restart:**
+   - Download වී අවසන් වූ පසු **"Restart & Install Now"** button එක click කල විට app එක restart වී නව version එක install වේ.
+
+---
+
+### 📦 ක්‍රමය B: Manual Setup Overwrite (අතින් update කිරීම)
+- ඔබ අලුත් version එකේ Setup file එක (`RuXt AI Studio Setup 2.2.0.exe`) build කර client ට ලබා දෙයි.
+- Client විසින් පරණ version එක uninstall නොකර, කෙලින්ම අලුත් `.exe` එක run කර "Next -> Install" කරයි.
+- පැරණි installation එක ස්වයංක්‍රීයව update වේ.
+
+---
+
+### 🛡️ වැදගත්ම කරුණ: User Data & SQLite Database ආරක්ෂාව (Zero-Data-Loss)
+- RuXt හි SQLite database එක (`ruxt.sqlite`), User chat logs, Custom Agents, Settings සහ API Keys ගබඩා වන්නේ system AppData folder එක තුළයි (`%APPDATA%\ruxt-desktop\data`).
+- එබැවින් **ක්‍රමය A හෝ ක්‍රමය B මගින් update කලද කිසිදු client දත්තයක් හෝ API key එකක් මැකී නොයයි**.
+
+---
+
+### 👨‍💻 Developer කෙනෙකු ලෙස Update එකක් Release කරන සම්පූර්ණ පියවර (Release Steps):
+
+1. **Version එක වැඩි කරන්න:**
+   `package.json` හි version එක update කරන්න (උදා: `"version": "2.2.0"`).
+2. **Changes commit කරන්න:**
+   ```bash
+   git add .
+   git commit -m "feat: release version 2.2.0 with new agents"
+   ```
+3. **Tag එකක් සාදා Push කරන්න:**
+   ```bash
+   git tag v2.2.0
+   git push origin main --tags
+   ```
+4. **GitHub Actions ස්වයංක්‍රීයව ක්‍රියාත්මක වීම:**
+   - GitHub Actions (`.github/workflows/release.yml`) මගින් ස්වයංක්‍රීයව Windows `.exe` සහ `latest.yml` build කර GitHub Releases පිටුවට publish කරනු ඇත.
+5. **Client හට Update ලැබීම:**
+   - Client ගේ පරිගණකයේ ඇති RuXt app එක open කල විට අලුත් update එක ස්වයංක්‍රීයව pop-up වේ!
+
+---
+
 ## 🍎 6. Mac & Linux Release Guide
 
 ### Deliverable Formats:

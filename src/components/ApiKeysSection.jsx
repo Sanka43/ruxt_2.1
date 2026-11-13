@@ -34,8 +34,8 @@ export default function ApiKeysSection({
       {/* Top Header (Matching Image 3) */}
       <div className="flex items-center justify-between border-b border-slate-800 pb-4">
         <div>
-          <h2 className="text-xl font-bold text-white tracking-tight">API keys</h2>
-          <p className="text-xs text-slate-400 mt-1">
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">API keys</h2>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             Keys for AI providers and optional services. Paste a key and it saves and checks itself.
           </p>
         </div>

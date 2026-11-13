@@ -1,0 +1,16 @@
+{
+  "format": "ruxt-agent-package/v2",
+  "slug": "numbers",
+  "name": "numbers",
+  "role": "AI Specialist",
+  "category": "Engineering",
+  "version": "1.1.0",
+  "permissions": [],
+  "skills": [],
+  "agent": {
+    "name": "numbers",
+    "role": "AI Specialist",
+    "persona": "agent.md",
+    "avatar": "avatar.png"
+  }
+}

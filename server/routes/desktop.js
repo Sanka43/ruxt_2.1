@@ -16,6 +16,7 @@ import {
   startVisionDesktopExecution, 
   stopScreenBorder 
 } from '../services/visionComputerUse.js';
+import { generateAIResponse } from '../services/aiProvider.js';
 import db from '../db.js';
 
 const router = Router();
@@ -26,6 +27,37 @@ router.get('/apps', (req, res) => {
     const list = ['blender', 'vscode', 'cursor', 'notepad', 'paint', 'chrome'];
     const apps = list.map(slug => findInstalledApplication(slug));
     res.json({ success: true, apps });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 1b. Direct multimodal vision prompt via Local Antigravity Host (Zero API key needed)
+router.post('/vision-prompt', async (req, res) => {
+  try {
+    const userPrompt = req.body.userPrompt || req.body.prompt;
+    const systemPrompt = req.body.systemPrompt || req.body.system || '';
+    const imageBase64 = req.body.imageBase64 || req.body.image || null;
+    const model = req.body.model || 'flash';
+
+    if (!userPrompt) {
+      return res.status(400).json({ error: 'userPrompt is required' });
+    }
+
+    const aiRes = await generateAIResponse({
+      provider: 'antigravity',
+      model,
+      systemPrompt,
+      userMessage: userPrompt,
+      images: imageBase64 ? [imageBase64] : []
+    });
+
+    res.json({
+      success: true,
+      content: aiRes.content,
+      model: aiRes.model,
+      provider: aiRes.provider
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -81,6 +113,108 @@ router.post('/execute-vision', async (req, res) => {
       goal: job.goal,
       steps: job.steps,
       taskContract: job.taskContract
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 2c. Start autonomous Agent-S Vision Desktop execution
+router.post('/execute-agent-s', async (req, res) => {
+  try {
+    const { goal, provider, model, apiKey, baseUrl, maxSteps = 25 } = req.body;
+    if (!goal) {
+      return res.status(400).json({ error: 'goal is required' });
+    }
+
+    const { randomUUID } = await import('crypto');
+    const jobId = randomUUID();
+    let scriptPath = path.resolve(__dirname, '../../RuXt-AI-Vision-Desktop/run_agent.py');
+    if (scriptPath.includes('app.asar')) {
+      scriptPath = scriptPath.replace('app.asar', 'app.asar.unpacked');
+    }
+
+    const jobState = {
+      id: jobId,
+      goal,
+      appName: 'AGENT-S VISION',
+      status: 'running',
+      steps: [],
+      logs: [],
+      subscribers: new Set(),
+      childProcess: null,
+      startTime: Date.now()
+    };
+
+    activeDesktopJobs.set(jobId, jobState);
+
+    const args = ['--task', goal, '--json', '--max-steps', String(maxSteps)];
+    if (provider) args.push('--provider', provider);
+    if (model) args.push('--model', model);
+    if (apiKey) args.push('--api-key', apiKey);
+    if (baseUrl) args.push('--base-url', baseUrl);
+
+    const pythonBin = process.platform === 'win32' ? 'python.exe' : 'python3';
+    const child = spawn(pythonBin, [scriptPath, ...args], {
+      cwd: path.dirname(scriptPath),
+      env: { ...process.env, PYTHONUNBUFFERED: '1' }
+    });
+
+    jobState.childProcess = child;
+
+    const broadcast = (event) => {
+      jobState.logs.push(event);
+      for (const sub of jobState.subscribers) {
+        try {
+          sub.write(`data: ${JSON.stringify(event)}\n\n`);
+        } catch (_) {}
+      }
+    };
+
+    let buffer = '';
+    child.stdout.on('data', (chunk) => {
+      buffer += chunk.toString();
+      const lines = buffer.split('\n');
+      buffer = lines.pop(); // Keep unfinished line in buffer
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const parsed = JSON.parse(line.trim());
+          broadcast({ type: 'agent_s_event', jobId, ...parsed });
+          if (parsed.event === 'finish') {
+            jobState.status = parsed.success ? 'completed' : 'failed';
+          }
+        } catch (_) {
+          broadcast({ type: 'log', jobId, text: line.trim() });
+        }
+      }
+    });
+
+    child.stderr.on('data', (chunk) => {
+      const errTxt = chunk.toString().trim();
+      if (errTxt) {
+        broadcast({ type: 'log', jobId, text: `[agent-s stderr] ${errTxt}` });
+      }
+    });
+
+    child.on('close', (code) => {
+      jobState.childProcess = null;
+      if (jobState.status === 'running') {
+        jobState.status = code === 0 ? 'completed' : 'failed';
+      }
+      broadcast({ type: 'complete', jobId, status: jobState.status, exitCode: code });
+    });
+
+    child.on('error', (err) => {
+      jobState.status = 'failed';
+      broadcast({ type: 'error', jobId, error: err.message });
+    });
+
+    res.json({
+      success: true,
+      jobId,
+      goal,
+      engine: 'Agent-S'
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

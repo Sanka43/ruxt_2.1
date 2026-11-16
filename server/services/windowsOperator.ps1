@@ -184,6 +184,38 @@ public class WinDesktopEngine {
     [DllImport("user32.dll")]
     public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+    public static extern IntPtr LoadImage(IntPtr hinst, string lpszName, uint uType, int cxDesired, int cyDesired, uint fuLoad);
+
+    [DllImport("user32.dll")]
+    public static extern bool SetSystemCursor(IntPtr hcur, uint id);
+
+    [DllImport("user32.dll")]
+    public static extern bool SystemParametersInfo(uint uiAction, uint uiParam, IntPtr pvParam, uint fWinIni);
+
+    public const uint IMAGE_CURSOR = 2;
+    public const uint LR_LOADFROMFILE = 0x00000010;
+    public const uint OCR_NORMAL = 32512;
+    public const uint SPI_SETCURSORS = 0x0057;
+
+    public static bool SetAiCursor(bool active) {
+        if (active) {
+            string cursorPath = @"C:\Windows\Cursors\arrow_r.cur";
+            if (!System.IO.File.Exists(cursorPath)) {
+                cursorPath = @"C:\Windows\Cursors\arrow_rm.cur";
+            }
+            if (System.IO.File.Exists(cursorPath)) {
+                IntPtr hCur = LoadImage(IntPtr.Zero, cursorPath, IMAGE_CURSOR, 0, 0, LR_LOADFROMFILE);
+                if (hCur != IntPtr.Zero) {
+                    return SetSystemCursor(hCur, OCR_NORMAL);
+                }
+            }
+            return false;
+        } else {
+            return SystemParametersInfo(SPI_SETCURSORS, 0, IntPtr.Zero, 0);
+        }
+    }
+
     // Keyboard SendInput
     [StructLayout(LayoutKind.Sequential)]
     public struct INPUT {
@@ -921,6 +953,24 @@ switch ($Action.ToLower()) {
             }
         } else {
             Write-Output "ERR:OVERLAY_SCRIPT_NOT_FOUND"
+        }
+    }
+
+    "set_ai_cursor" {
+        $ok = [WinDesktopEngine]::SetAiCursor($true)
+        if ($ok) {
+            Write-Output "OK:AI_CURSOR_SET"
+        } else {
+            Write-Output "WARN:AI_CURSOR_FAILED"
+        }
+    }
+
+    "restore_cursor" {
+        $ok = [WinDesktopEngine]::SetAiCursor($false)
+        if ($ok) {
+            Write-Output "OK:CURSOR_RESTORED"
+        } else {
+            Write-Output "WARN:CURSOR_RESTORE_FAILED"
         }
     }
 

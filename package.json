@@ -1,6 +1,6 @@
 {
   "name": "ruxt-desktop",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "RuXt 2.1 - Zero-Config AI Agent Desktop Platform",
   "author": "Sanka43 <isankaerangahtc820@gmail.com>",
   "main": "electron/main.cjs",
@@ -42,10 +42,14 @@
       "electron/**/*",
       "server/**/*",
       "agents/**/*",
+      "RuXt-AI-Vision-Desktop/**/*",
       "package.json"
     ],
     "asarUnpack": [
-      "**/server/services/*.ps1"
+      "server/**/*",
+      "**/server/**/*",
+      "RuXt-AI-Vision-Desktop/**/*",
+      "**/RuXt-AI-Vision-Desktop/**/*"
     ],
     "win": {
       "target": [

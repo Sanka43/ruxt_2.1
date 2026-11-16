@@ -1,0 +1,29 @@
+# RuXt AI Vision Desktop Configuration (Powered by Agent-S Architecture)
+
+# AI Provider Settings
+# Supported providers: "antigravity", "openai", "anthropic", "gemini", "ollama", "openrouter"
+provider: "antigravity"
+model: "flash"
+api_key: ""           # Or set via environment variables (OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY)
+base_url: ""          # Optional custom base URL (e.g. for Ollama: http://localhost:11434/v1)
+
+# Vision Grounding Settings
+grounding:
+  use_uia_tree: true          # Use Windows UI Automation tree to assist coordinate lookup
+  coordinate_scale: 1000      # Grounding normalized coordinates scale (0-1000)
+  screenshot_max_width: 1920  # Max width to resize for LLM token efficiency
+  screenshot_max_height: 1080
+
+# Execution & Automation Settings
+execution:
+  mouse_move_duration: 0.15   # Smooth fluid mouse movement time in seconds
+  action_delay: 0.2           # Rapid delay between consecutive actions
+  type_via_clipboard: true    # Unicode safe typing on Windows via clipboard
+  failsafe: true              # PyAutoGUI failsafe (slam mouse to screen corner to abort)
+
+# Autonomous Agent Policy
+agent:
+  max_steps: 25               # Maximum autonomous steps per task
+  enable_reflection: true     # Reflect on previous action before executing next
+  log_level: "INFO"
+  data_dir: "data"

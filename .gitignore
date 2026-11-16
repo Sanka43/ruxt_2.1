@@ -29,3 +29,11 @@ out.txt
 Thumbs.db
 .vscode/
 .idea/
+
+# Python cache & test artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+test_acp_image.js
+

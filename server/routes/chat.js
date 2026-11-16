@@ -262,7 +262,7 @@ Answer the user directly, provide structured and actionable recommendations acco
     const msgLower = (content || '').toLowerCase();
 
     const isDesktopIntent = isRuXtLeader && (
-      msgLower.match(/open|blender|3d|note\s?pad(e)?|notes?|satahan|paint|cursor|vs\s?code|chrome|calc|excel|app eka|pc eke|youtube|song|sindu|play|screen/)
+      msgLower.match(/open|launch|start|run|close|type|click|press|scroll|browse|navigate|search|download|control|controll|desktop|pc|screen|monitor|mouse|cursor|window|app\b|software|chrome|edge|firefox|browser|paint|mspaint|note\s?pad(e)?|notes?|satahan|calc|calculator|excel|word|vscode|vs\s?code|cmd|powershell|terminal|chatgpt|youtube|spotify|song|sindu|play|blender|3d|app eka|pc eke|screen eke|desktop eke|gihin|karanna|danna|ahanna|liyanna/)
     );
 
     if (isDesktopIntent) {

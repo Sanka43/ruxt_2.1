@@ -137,6 +137,10 @@ export function stopScreenBorder() {
   runWindowsAction(['-Action', 'stop_border']).catch(() => {});
 }
 
+export function setAiCursor(active = true) {
+  return runWindowsAction(['-Action', active ? 'set_ai_cursor' : 'restore_cursor']).catch(() => {});
+}
+
 /**
  * Universal Autonomous Computer-Use Engine
  */
@@ -206,19 +210,22 @@ export async function startVisionDesktopExecution({
         return;
       }
 
-      // 2. Universal Task Understanding
-      completionController.transitionTo(TaskLifecycleState.UNDERSTANDING, 'Decomposing arbitrary user intent into task contract');
-      broadcast({
-        type: 'log',
-        jobId,
-        text: `[RuXt Agent] Analyzing complete intention for: "${goal}"`
-      });
-
-      const taskContract = await understandTask({ goal, settings });
+      // 2. Direct Autonomous Agent-S Initialization (Zero-Latency, No Preflight Hang)
+      const taskContract = {
+        objective: goal,
+        primaryApp: 'DESKTOP',
+        isSinhala: /[\u0D80-\u0DFF]|karanna|danna|ahanna|balanna|open|mata/i.test(goal),
+        planSteps: [
+          { id: 1, name: 'Observe Environment', action: 'observe', expected: 'Screen observed' },
+          { id: 2, name: 'Execute Autonomous Vision Steps', action: 'agent_s_loop', expected: goal }
+        ],
+        successCriteria: [
+          { id: 'task_outcome_satisfied', type: 'general_outcome', description: goal }
+        ]
+      };
       jobState.taskContract = taskContract;
 
-      // 3. Dynamic Planning
-      completionController.transitionTo(TaskLifecycleState.PLANNING, 'Formulating sequential action and verification graph');
+      completionController.transitionTo(TaskLifecycleState.PLANNING, 'Launching Autonomous Multimodal Vision Loop');
       jobState.steps = taskContract.planSteps.map((step, idx) => ({
         id: idx + 1,
         description: `${step.name}: ${step.expected}`
@@ -228,23 +235,150 @@ export async function startVisionDesktopExecution({
         type: 'start',
         jobId,
         taskTitle: goal,
-        appName: (taskContract.primaryApp || 'DESKTOP').toUpperCase(),
+        appName: 'DESKTOP',
         totalSteps: jobState.steps.length
       });
 
       broadcast({
         type: 'log',
         jobId,
-        text: `[RuXt Plan] Formulated ${jobState.steps.length} sequential execution checkpoints. Objective: "${taskContract.objective}"`
+        text: `🚀 [RuXt Agent-S] Launching Autonomous Multimodal Vision Loop for: "${goal}"`
       });
 
       startScreenBorder();
+      setAiCursor(true);
 
       const screenDims = await getScreenDimensions();
       const totalSteps = taskContract.planSteps.length;
 
-      // 4. Persistent Observe-Plan-Act-Verify Loop
-      for (let i = 0; i < totalSteps; i++) {
+      // Primary Engine: Autonomous Agent-S Vision Loop
+      const isAgentSTask = true;
+
+      if (isAgentSTask) {
+        broadcast({
+          type: 'log',
+          jobId,
+          text: `🚀 [RuXt Agent-S] Launching Autonomous Multimodal Vision Loop via Local Antigravity for: "${goal}"`
+        });
+
+        let pythonBin = process.platform === 'win32' ? 'python.exe' : 'python3';
+        if (process.platform === 'win32') {
+          const userProf = process.env.USERPROFILE || '';
+          const localApp = process.env.LOCALAPPDATA || (userProf ? path.join(userProf, 'AppData', 'Local') : '');
+          const pyCandidates = [
+            path.join(localApp, 'Programs', 'Python', 'Python314', 'python.exe'),
+            path.join(localApp, 'Programs', 'Python', 'Python313', 'python.exe'),
+            path.join(localApp, 'Programs', 'Python', 'Python312', 'python.exe'),
+            path.join(localApp, 'Programs', 'Python', 'Python311', 'python.exe'),
+            path.join(localApp, 'Programs', 'Python', 'Python310', 'python.exe'),
+            'C:\\Python314\\python.exe',
+            'C:\\Python313\\python.exe',
+            'C:\\Python312\\python.exe'
+          ];
+          for (const pc of pyCandidates) {
+            if (fs.existsSync(pc)) {
+              pythonBin = pc;
+              break;
+            }
+          }
+        }
+
+        let scriptPath = path.resolve(__dirname, '../../RuXt-AI-Vision-Desktop/run_agent.py');
+        if (scriptPath.includes('app.asar')) {
+          scriptPath = scriptPath.replace('app.asar', 'app.asar.unpacked');
+        }
+        if (!fs.existsSync(scriptPath)) {
+          const altPaths = [
+            path.join(process.resourcesPath || '', 'app.asar.unpacked', 'RuXt-AI-Vision-Desktop', 'run_agent.py'),
+            path.join(process.env.LOCALAPPDATA || '', 'Programs', 'RuXt AI Studio', 'resources', 'app.asar.unpacked', 'RuXt-AI-Vision-Desktop', 'run_agent.py'),
+            'c:\\xampp\\htdocs\\ruxt_2.1\\RuXt-AI-Vision-Desktop\\run_agent.py'
+          ];
+          for (const ap of altPaths) {
+            if (ap && fs.existsSync(ap)) {
+              scriptPath = ap;
+              break;
+            }
+          }
+        }
+
+        await new Promise((resolve) => {
+          const child = spawn(pythonBin, [
+            scriptPath,
+            '--task', goal,
+            '--json',
+            '--provider', settings.provider || 'antigravity',
+            '--max-steps', '20'
+          ], {
+            cwd: path.dirname(scriptPath),
+            env: { ...process.env, PYTHONUNBUFFERED: '1' }
+          });
+
+          jobState.childProcess = child;
+
+          let buffer = '';
+          child.stdout.on('data', (chunk) => {
+            const chunkStr = chunk.toString();
+            console.log(`[Vision Agent STDOUT]: ${chunkStr.trim()}`);
+            buffer += chunkStr;
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+            for (const line of lines) {
+              if (!line.trim()) continue;
+              try {
+                const parsed = JSON.parse(line.trim());
+                if (parsed.event === 'step') {
+                  broadcast({
+                    type: 'step_start',
+                    jobId,
+                    stepIndex: parsed.step - 1,
+                    stepNumber: parsed.step,
+                    totalSteps: 10,
+                    description: parsed.plan || parsed.action,
+                    progress: Math.min(95, parsed.step * 10),
+                    actionIcon: '🖱️'
+                  });
+                  broadcast({
+                    type: 'log',
+                    jobId,
+                    text: `[Agent-S Step ${parsed.step}] Action: ${parsed.action} | Result: ${parsed.result}`
+                  });
+                } else if (parsed.event === 'finish') {
+                  if (parsed.success) {
+                    completionController.recordEvidence('task_outcome_satisfied', { verified: true });
+                  }
+                }
+              } catch (_) {
+                broadcast({ type: 'log', jobId, text: line.trim() });
+              }
+            }
+          });
+
+          child.stderr.on('data', (d) => {
+            const errStr = d.toString().trim();
+            if (errStr) {
+              console.error(`[Vision Agent STDERR]: ${errStr}`);
+              broadcast({ type: 'log', jobId, text: `[agent-s] ${errStr}` });
+            }
+          });
+
+          child.on('close', (code) => {
+            console.log(`[Vision Agent Closed]: Exit code ${code}`);
+            jobState.childProcess = null;
+            if (code === 0) {
+              completionController.recordEvidence('task_outcome_satisfied', { verified: true });
+            }
+            resolve();
+          });
+
+          child.on('error', (err) => {
+            console.error(`[Vision Agent Process Error]:`, err);
+            broadcast({ type: 'error', jobId, error: err.message });
+            resolve();
+          });
+        });
+      } else {
+        // 4. Persistent Observe-Plan-Act-Verify Loop (Standard fallback for predefined demo apps)
+        for (let i = 0; i < totalSteps; i++) {
         if (jobState.aborted) {
           completionController.transitionTo(TaskLifecycleState.CANCELLED, 'User aborted');
           break;
@@ -465,6 +599,7 @@ export async function startVisionDesktopExecution({
 
         await new Promise(r => setTimeout(r, 300));
       }
+      }
 
       // 5. Final Outcome Verification by Task Completion Controller
       const finalReport = completionController.generateReport(taskContract);
@@ -554,6 +689,7 @@ export async function startVisionDesktopExecution({
       }
     } finally {
       stopScreenBorder();
+      setAiCursor(false);
     }
   })();
 

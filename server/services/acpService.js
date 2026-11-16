@@ -30,6 +30,7 @@ class AcpEngine {
     this.authUrl = null;
     this.activeModel = 'flash';
     this.currentCwd = process.cwd();
+    this.promptMutex = Promise.resolve();
   }
 
   findBinary(customPath = null) {
@@ -289,6 +290,7 @@ class AcpEngine {
   handleStderr(chunk) {
     const text = chunk.trim();
     if (!text) return;
+    console.error('[ACP STDERR]:', text);
     
     // Check if auth link is presented
     if (text.includes('Open the following link to authenticate the ACP server:')) {
@@ -377,9 +379,16 @@ class AcpEngine {
   }
 
   /**
-   * Primary entry point for sending a prompt to the ACP Agent
+   * Primary entry point for sending a prompt to the ACP Agent.
+   * Guaranteed sequential execution via async mutex queue to prevent ACP concurrency panics.
    */
-  async prompt({
+  prompt(options) {
+    const nextInQueue = this.promptMutex.then(() => this._executePrompt(options));
+    this.promptMutex = nextInQueue.catch(() => {});
+    return nextInQueue;
+  }
+
+  async _executePrompt({
     promptText,
     systemPrompt = null,
     history = [],
@@ -388,7 +397,7 @@ class AcpEngine {
     customBinaryPath = null,
     cwd = null,
     onDelta = null
-  }) {
+  }, retryCount = 0) {
     await this.ensureReady({ customBinaryPath, cwd });
     this.touchIdleTimer();
 
@@ -428,7 +437,7 @@ class AcpEngine {
       const res = await this.sendRequest('session/prompt', {
         sessionId: this.sessionId,
         prompt: promptItems
-      }, 60000);
+      }, 45000);
 
       const outputContent = deferred.accumulatedText.trim();
       return {
@@ -437,6 +446,30 @@ class AcpEngine {
         usage: res?.usage || null,
         sessionId: this.sessionId
       };
+    } catch (err) {
+      const errMsg = err?.message || String(err);
+      // Auto-healing: if session crashed or connection became unrecoverable, restart ACP and retry once
+      if (
+        retryCount === 0 &&
+        (errMsg.includes('Concurrent receive_steps') ||
+         errMsg.includes('connection unrecoverable') ||
+         errMsg.includes('ACP server process exited') ||
+         errMsg.includes('ACP Server is not running'))
+      ) {
+        console.warn(`[RuXt ACP Auto-Healing]: Encountered transient error (${errMsg}). Resetting session and retrying...`);
+        this.shutdown();
+        return this._executePrompt({
+          promptText,
+          systemPrompt,
+          history,
+          images,
+          model,
+          customBinaryPath,
+          cwd,
+          onDelta
+        }, retryCount + 1);
+      }
+      throw err;
     } finally {
       this.activePromptDeferred = null;
     }

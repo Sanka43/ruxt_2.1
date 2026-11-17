@@ -14,7 +14,8 @@ import {
 } from '../services/desktopOperator.js';
 import { 
   startVisionDesktopExecution, 
-  stopScreenBorder 
+  stopScreenBorder,
+  setAiCursor
 } from '../services/visionComputerUse.js';
 import { generateAIResponse } from '../services/aiProvider.js';
 import db from '../db.js';
@@ -32,24 +33,105 @@ router.get('/apps', (req, res) => {
   }
 });
 
-// 1b. Direct multimodal vision prompt via Local Antigravity Host (Zero API key needed)
+/**
+ * Intelligent Speed-Based AI Priority Cascade:
+ * Priority 1: Google Gemini 2.0 Flash (Ultra-fast direct API ~0.8s)
+ * Priority 2: OpenAI GPT-4o-mini (Fast direct API ~1.2s)
+ * Priority 3: Custom / User explicitly chosen active_provider
+ * Priority 4: Zero-API Local Antigravity Host (Fallback ~6s-30s)
+ */
+export function resolveFastestProvider(explicitProvider = null, explicitModel = null, explicitApiKey = null) {
+  let settings = {};
+  try {
+    const rows = db.prepare('SELECT key, value FROM settings').all();
+    for (const r of rows) settings[r.key] = r.value;
+  } catch (_) {}
+
+  // 1. Explicit provider override
+  if (explicitProvider) {
+    const resolvedKey = explicitApiKey || settings[`${explicitProvider}_api_key`] || '';
+    return {
+      provider: explicitProvider,
+      model: explicitModel || settings[`${explicitProvider}_model`] || (explicitProvider === 'gemini' ? 'gemini-2.0-flash' : explicitProvider === 'openai' ? 'gpt-4o-mini' : 'flash'),
+      apiKey: resolvedKey,
+      settings
+    };
+  }
+
+  // Priority 1: Gemini 2.0 / 3.5 Flash (Fastest)
+  const geminiKey = settings.gemini_api_key || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  if (geminiKey && geminiKey.trim().length > 10) {
+    return {
+      provider: 'gemini',
+      model: settings.gemini_model || 'gemini-3.5-flash',
+      apiKey: geminiKey.trim(),
+      settings
+    };
+  }
+
+  // Priority 2: Anthropic Claude 3.5/3.7 Sonnet Computer Use
+  const anthropicKey = settings.anthropic_api_key || process.env.ANTHROPIC_API_KEY;
+  if (anthropicKey && anthropicKey.trim().length > 10) {
+    return {
+      provider: 'anthropic',
+      model: settings.anthropic_model || 'claude-3-5-sonnet-20241022',
+      apiKey: anthropicKey.trim(),
+      settings
+    };
+  }
+
+  // Priority 2: OpenAI GPT-4o-mini
+  const openaiKey = settings.openai_api_key || process.env.OPENAI_API_KEY;
+  if (openaiKey && openaiKey.trim().length > 10) {
+    return {
+      provider: 'openai',
+      model: settings.openai_model || 'gpt-4o-mini',
+      apiKey: openaiKey.trim(),
+      settings
+    };
+  }
+
+  // Priority 3: Custom active_provider if set
+  if (settings.active_provider && settings.active_provider !== 'antigravity') {
+    const p = settings.active_provider;
+    return {
+      provider: p,
+      model: settings[`${p}_model`] || 'default',
+      apiKey: settings[`${p}_api_key`] || '',
+      settings
+    };
+  }
+
+  // Priority 4: Zero-API Local Antigravity Fallback
+  return {
+    provider: 'antigravity',
+    model: settings.antigravity_model || 'flash',
+    apiKey: '',
+    settings
+  };
+}
+
+// 1b. Multimodal vision prompt with Speed-Based Priority Ladder (Gemini 2.0 Flash first, Antigravity fallback)
 router.post('/vision-prompt', async (req, res) => {
   try {
     const userPrompt = req.body.userPrompt || req.body.prompt;
     const systemPrompt = req.body.systemPrompt || req.body.system || '';
     const imageBase64 = req.body.imageBase64 || req.body.image || null;
-    const model = req.body.model || 'flash';
 
     if (!userPrompt) {
       return res.status(400).json({ error: 'userPrompt is required' });
     }
 
+    const fastest = resolveFastestProvider(req.body.provider, req.body.model, req.body.apiKey);
+
     const aiRes = await generateAIResponse({
-      provider: 'antigravity',
-      model,
+      provider: fastest.provider,
+      model: fastest.model,
+      apiKey: fastest.apiKey,
       systemPrompt,
       userMessage: userPrompt,
-      images: imageBase64 ? [imageBase64] : []
+      images: imageBase64 ? [imageBase64] : [],
+      settings: fastest.settings
     });
 
     res.json({
@@ -122,7 +204,7 @@ router.post('/execute-vision', async (req, res) => {
 // 2c. Start autonomous Agent-S Vision Desktop execution
 router.post('/execute-agent-s', async (req, res) => {
   try {
-    const { goal, provider, model, apiKey, baseUrl, maxSteps = 25 } = req.body;
+    const { goal, provider, model, apiKey, baseUrl, cursorMode, maxSteps = 25 } = req.body;
     if (!goal) {
       return res.status(400).json({ error: 'goal is required' });
     }
@@ -148,11 +230,14 @@ router.post('/execute-agent-s', async (req, res) => {
 
     activeDesktopJobs.set(jobId, jobState);
 
+    const fastest = resolveFastestProvider(provider, model, apiKey);
+
     const args = ['--task', goal, '--json', '--max-steps', String(maxSteps)];
-    if (provider) args.push('--provider', provider);
-    if (model) args.push('--model', model);
-    if (apiKey) args.push('--api-key', apiKey);
+    args.push('--provider', fastest.provider);
+    args.push('--model', fastest.model);
+    if (fastest.apiKey) args.push('--api-key', fastest.apiKey);
     if (baseUrl) args.push('--base-url', baseUrl);
+    if (cursorMode) args.push('--cursor-mode', cursorMode);
 
     const pythonBin = process.platform === 'win32' ? 'python.exe' : 'python3';
     const child = spawn(pythonBin, [scriptPath, ...args], {
@@ -252,6 +337,7 @@ router.post('/abort/:jobId', (req, res) => {
   const { jobId } = req.params;
   const success = abortLiveDesktopExecution(jobId);
   stopScreenBorder();
+  setAiCursor(false);
   res.json({ success });
 });
 
@@ -265,6 +351,7 @@ router.post('/abort-active', (req, res) => {
     }
   }
   stopScreenBorder();
+  setAiCursor(false);
   res.json({ success: true, abortedCount: count });
 });
 

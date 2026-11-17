@@ -138,7 +138,37 @@ export function stopScreenBorder() {
 }
 
 export function setAiCursor(active = true) {
-  return runWindowsAction(['-Action', active ? 'set_ai_cursor' : 'restore_cursor']).catch(() => {});
+  if (active) {
+    const candidates = [
+      path.resolve(__dirname, 'assets/ruxt_neon.cur'),
+      path.resolve(__dirname, '../assets/ruxt_neon.cur'),
+      path.resolve(__dirname, '../../RuXt-AI-Vision-Desktop/ruxt_agent_s/assets/ruxt_neon.cur'),
+      path.resolve(__dirname, '../../public/assets/ruxt_neon.cur'),
+      path.join(process.resourcesPath || '', 'app.asar.unpacked', 'RuXt-AI-Vision-Desktop', 'ruxt_agent_s', 'assets', 'ruxt_neon.cur'),
+      path.join(process.resourcesPath || '', 'app.asar.unpacked', 'server', 'assets', 'ruxt_neon.cur')
+    ];
+    let curPath = '';
+    for (let c of candidates) {
+      if (c && c.includes('app.asar')) {
+        const unpacked = c.replace('app.asar', 'app.asar.unpacked');
+        if (fs.existsSync(unpacked)) {
+          curPath = unpacked;
+          break;
+        }
+      }
+      if (c && fs.existsSync(c)) {
+        curPath = c;
+        break;
+      }
+    }
+    const args = ['-Action', 'set_ai_cursor'];
+    if (curPath) {
+      args.push('-CursorPath', curPath);
+    }
+    return runWindowsAction(args).catch(() => {});
+  } else {
+    return runWindowsAction(['-Action', 'restore_cursor']).catch(() => {});
+  }
 }
 
 /**
@@ -302,13 +332,23 @@ export async function startVisionDesktopExecution({
         }
 
         await new Promise((resolve) => {
-          const child = spawn(pythonBin, [
+          const spawnArgs = [
             scriptPath,
             '--task', goal,
             '--json',
-            '--provider', settings.provider || 'antigravity',
             '--max-steps', '20'
-          ], {
+          ];
+          if (settings.provider && settings.provider !== 'antigravity') {
+            spawnArgs.push('--provider', settings.provider);
+          }
+          if (settings.apiKey) {
+            spawnArgs.push('--api-key', settings.apiKey);
+          }
+          if (settings.cursorMode) {
+            spawnArgs.push('--cursor-mode', settings.cursorMode);
+          }
+
+          const child = spawn(pythonBin, spawnArgs, {
             cwd: path.dirname(scriptPath),
             env: { ...process.env, PYTHONUNBUFFERED: '1' }
           });

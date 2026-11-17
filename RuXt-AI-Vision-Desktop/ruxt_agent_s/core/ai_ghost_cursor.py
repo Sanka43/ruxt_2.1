@@ -21,7 +21,35 @@ WS_POPUP = 0x80000000
 SWP_NOSIZE = 0x0001
 SWP_NOACTIVATE = 0x0010
 SWP_SHOWWINDOW = 0x0040
-HWND_TOPMOST = -1
+HWND_TOPMOST = ctypes.c_void_p(-1)
+
+# Ensure proper 64-bit Win32 argtypes & restypes
+user32 = ctypes.windll.user32
+gdi32 = ctypes.windll.gdi32
+kernel32 = ctypes.windll.kernel32
+
+kernel32.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
+kernel32.GetModuleHandleW.restype = wintypes.HMODULE
+
+user32.SetWindowPos.argtypes = [
+    wintypes.HWND,
+    ctypes.c_void_p,
+    ctypes.c_int,
+    ctypes.c_int,
+    ctypes.c_int,
+    ctypes.c_int,
+    wintypes.UINT
+]
+user32.SetWindowPos.restype = wintypes.BOOL
+
+user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+user32.ShowWindow.restype = wintypes.BOOL
+
+user32.DestroyWindow.argtypes = [wintypes.HWND]
+user32.DestroyWindow.restype = wintypes.BOOL
+
+user32.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+user32.PostMessageW.restype = wintypes.BOOL
 
 ULW_ALPHA = 0x00000002
 AC_SRC_OVER = 0x00
@@ -41,6 +69,69 @@ class BLENDFUNCTION(ctypes.Structure):
         ("SourceConstantAlpha", ctypes.c_byte),
         ("AlphaFormat", ctypes.c_byte)
     ]
+
+# Module-level window procedure & class definition (persistent 64-bit pointer)
+LRESULT = ctypes.c_int64 if ctypes.sizeof(ctypes.c_void_p) == 8 else ctypes.c_long
+WPARAM = wintypes.WPARAM
+LPARAM = wintypes.LPARAM
+WNDPROC = ctypes.WINFUNCTYPE(LRESULT, wintypes.HWND, wintypes.UINT, WPARAM, LPARAM)
+
+user32.DefWindowProcW.argtypes = [wintypes.HWND, wintypes.UINT, WPARAM, LPARAM]
+user32.DefWindowProcW.restype = LRESULT
+
+def _ghost_wnd_proc(hwnd, msg, wparam, lparam):
+    if msg == 0x0010:  # WM_CLOSE
+        user32.DestroyWindow(hwnd)
+        return 0
+    elif msg == 0x0002:  # WM_DESTROY
+        user32.PostQuitMessage(0)
+        return 0
+    return user32.DefWindowProcW(hwnd, msg, wparam, lparam)
+
+_wnd_proc_ptr = WNDPROC(_ghost_wnd_proc)
+
+class WNDCLASSW(ctypes.Structure):
+    _fields_ = [
+        ("style", wintypes.UINT),
+        ("lpfnWndProc", WNDPROC),
+        ("cbClsExtra", ctypes.c_int),
+        ("cbWndExtra", ctypes.c_int),
+        ("hInstance", wintypes.HINSTANCE),
+        ("hIcon", wintypes.HICON),
+        ("hCursor", wintypes.HCURSOR),
+        ("hbrBackground", wintypes.HBRUSH),
+        ("lpszMenuName", wintypes.LPCWSTR),
+        ("lpszClassName", wintypes.LPCWSTR),
+    ]
+
+_CURSOR_CLASS_NAME = f"RuXtGhostCursorClass_{os.getpid()}"
+_class_atom = None
+_global_wc = None
+_class_lock = threading.Lock()
+
+def _ensure_cursor_class():
+    global _class_atom, _global_wc
+    with _class_lock:
+        if _class_atom:
+            return _CURSOR_CLASS_NAME
+        _global_wc = WNDCLASSW()
+        _global_wc.style = 0
+        _global_wc.lpfnWndProc = _wnd_proc_ptr
+        _global_wc.cbClsExtra = 0
+        _global_wc.cbWndExtra = 0
+        _global_wc.hInstance = kernel32.GetModuleHandleW(None)
+        _global_wc.hIcon = 0
+        _global_wc.hCursor = 0
+        _global_wc.hbrBackground = 0
+        _global_wc.lpszMenuName = None
+        _global_wc.lpszClassName = _CURSOR_CLASS_NAME
+        user32.RegisterClassW.argtypes = [ctypes.POINTER(WNDCLASSW)]
+        user32.RegisterClassW.restype = wintypes.ATOM
+        _class_atom = user32.RegisterClassW(ctypes.byref(_global_wc))
+        return _CURSOR_CLASS_NAME
+
+# Pre-register class in main thread
+_ensure_cursor_class()
 
 
 class AIGhostCursorOverlay:
@@ -64,7 +155,7 @@ class AIGhostCursorOverlay:
         self._clicking_effect = 0
 
     def start(self):
-        if self.is_running:
+        if self.is_running and self.hwnd:
             return
         self.is_running = True
         self._thread = threading.Thread(target=self._run_window_loop, daemon=True)
@@ -79,14 +170,14 @@ class AIGhostCursorOverlay:
         self.is_running = False
         if self.hwnd:
             try:
-                ctypes.windll.user32.PostMessageW(self.hwnd, 0x0010, 0, 0)  # WM_CLOSE
+                user32.PostMessageW(self.hwnd, 0x0010, 0, 0)  # WM_CLOSE
             except Exception:
                 pass
         self.hwnd = None
 
-    def move_to(self, x: int, y: int, duration: float = 0.2, label: str = ""):
+    def move_to(self, x: int, y: int, duration: float = 0.25, label: str = ""):
         """Smoothly glides the AI Ghost Cursor to (x, y) over duration seconds."""
-        if not self.hwnd:
+        if not self.hwnd or not self.is_running:
             self.start()
 
         self._action_label = label
@@ -97,7 +188,7 @@ class AIGhostCursorOverlay:
             self.set_position(x, y)
             return
 
-        steps = max(5, int(duration * 60))
+        steps = max(10, int(duration * 60))
         for step in range(1, steps + 1):
             t = step / steps
             # Smooth ease-out cubic
@@ -113,10 +204,10 @@ class AIGhostCursorOverlay:
 
     def set_position(self, x: int, y: int):
         with self._lock:
-            self.current_x = x
-            self.current_y = y
+            self.current_x = int(x)
+            self.current_y = int(y)
         if self.hwnd:
-            ctypes.windll.user32.SetWindowPos(
+            user32.SetWindowPos(
                 self.hwnd,
                 HWND_TOPMOST,
                 int(x),
@@ -129,68 +220,10 @@ class AIGhostCursorOverlay:
     def show(self, visible: bool = True):
         self.is_visible = visible
         if self.hwnd:
-            ctypes.windll.user32.ShowWindow(self.hwnd, 5 if visible else 0)
+            user32.ShowWindow(self.hwnd, 5 if visible else 0)
 
     def _run_window_loop(self):
-        user32 = ctypes.windll.user32
-        gdi32 = ctypes.windll.gdi32
-        kernel32 = ctypes.windll.kernel32
-
-        # Window Procedure callback
-        LRESULT = ctypes.c_int64 if ctypes.sizeof(ctypes.c_void_p) == 8 else ctypes.c_long
-        WPARAM = wintypes.WPARAM
-        LPARAM = wintypes.LPARAM
-        WNDPROC = ctypes.WINFUNCTYPE(LRESULT, wintypes.HWND, wintypes.UINT, WPARAM, LPARAM)
-
-        user32.DefWindowProcW.argtypes = [wintypes.HWND, wintypes.UINT, WPARAM, LPARAM]
-        user32.DefWindowProcW.restype = LRESULT
-
-        def wnd_proc(hwnd, msg, wparam, lparam):
-            try:
-                if msg == 0x0010:  # WM_CLOSE
-                    user32.DestroyWindow(hwnd)
-                    return 0
-                elif msg == 0x0002:  # WM_DESTROY
-                    user32.PostQuitMessage(0)
-                    return 0
-                return user32.DefWindowProcW(hwnd, msg, wparam, lparam)
-            except Exception:
-                return 0
-
-        wnd_proc_ptr = WNDPROC(wnd_proc)
-
-        class WNDCLASSW(ctypes.Structure):
-            _fields_ = [
-                ("style", wintypes.UINT),
-                ("lpfnWndProc", WNDPROC),
-                ("cbClsExtra", ctypes.c_int),
-                ("cbWndExtra", ctypes.c_int),
-                ("hInstance", wintypes.HINSTANCE),
-                ("hIcon", wintypes.HICON),
-                ("hCursor", wintypes.HCURSOR),
-                ("hbrBackground", wintypes.HBRUSH),
-                ("lpszMenuName", wintypes.LPCWSTR),
-                ("lpszClassName", wintypes.LPCWSTR),
-            ]
-
-        self._wnd_proc_ptr = wnd_proc_ptr
-
-        class_name = f"RuXtGhostCursor_{os.getpid()}"
-        self._wc = WNDCLASSW()
-        self._wc.style = 0
-        self._wc.lpfnWndProc = self._wnd_proc_ptr
-        self._wc.cbClsExtra = 0
-        self._wc.cbWndExtra = 0
-        self._wc.hInstance = kernel32.GetModuleHandleW(None)
-        self._wc.hIcon = 0
-        self._wc.hCursor = 0
-        self._wc.hbrBackground = 0
-        self._wc.lpszMenuName = None
-        self._wc.lpszClassName = class_name
-
-        user32.RegisterClassW.argtypes = [ctypes.POINTER(WNDCLASSW)]
-        user32.RegisterClassW.restype = wintypes.ATOM
-        user32.RegisterClassW(ctypes.byref(self._wc))
+        class_name = _ensure_cursor_class()
 
         user32.CreateWindowExW.argtypes = [
             wintypes.DWORD, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD,
@@ -211,7 +244,7 @@ class AIGhostCursorOverlay:
             self.size + 20,
             None,
             None,
-            self._wc.hInstance,
+            kernel32.GetModuleHandleW(None),
             None
         )
 
@@ -236,9 +269,6 @@ class AIGhostCursorOverlay:
 
     def _render_ghost_cursor(self):
         """Draws a high-contrast Black Arrow with White Border & RuXt AI Badge onto the layered window."""
-        user32 = ctypes.windll.user32
-        gdi32 = ctypes.windll.gdi32
-
         w = self.size + 40
         h = self.size + 20
 

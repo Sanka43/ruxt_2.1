@@ -8,8 +8,13 @@ from typing import Optional, Tuple
 import mss
 from PIL import Image
 
+_dpi_bound = False
+
 def bind_thread_to_input_desktop():
     """Binds the current thread to the default Windows input desktop (WinStation)."""
+    global _dpi_bound
+    if _dpi_bound:
+        return
     if platform.system() == "Windows":
         try:
             # Set DPI awareness so coordinates match real screen pixels on Windows
@@ -26,8 +31,10 @@ def bind_thread_to_input_desktop():
             hdesk = user32.OpenDesktopW("default", 0, False, 0x01FF)
             if hdesk:
                 user32.SetThreadDesktop(hdesk)
+                user32.CloseDesktop(hdesk)
         except Exception:
             pass
+        _dpi_bound = True
 
 @dataclass
 class ScreenState:
@@ -64,11 +71,15 @@ class ScreenObserver:
         """Captures full desktop screenshot and returns structured ScreenState."""
         bind_thread_to_input_desktop()
         monitor = self._sct.monitors[1]
-        sct_img = self._sct.grab(monitor)
-        
-        # Convert to PIL Image
-        img = Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
-        real_w, real_h = img.size
+        try:
+            sct_img = self._sct.grab(monitor)
+            img = Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
+            real_w, real_h = img.size
+        except Exception as e:
+            # Fallback if Windows display session is locked, sleeping, or BitBlt busy
+            real_w = monitor.get("width", 1920)
+            real_h = monitor.get("height", 1080)
+            img = Image.new("RGB", (real_w, real_h), color=(30, 30, 30))
 
         # Optimize size for Vision LLMs with fast Bilinear downsampling
         model_img = img

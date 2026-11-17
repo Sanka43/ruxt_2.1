@@ -541,6 +541,19 @@ export async function handleOrchestratedConversation({
       VALUES (?, ?, 'ruxt', ?, 'completed', ?, ?, ?)
     `).run(dispatchId, sessionId, specialist.slug, combinedBrief, specialistMockupCode, subChatStr);
 
+    // Automatically convene Executive Board Room deliberation session in SQLite
+    let boardroomResult = null;
+    try {
+      boardroomResult = await conductBoardroomMeeting({
+        topic: projectBrief || userMessage || category.name,
+        squadName: `${category.name} Executive Squad`,
+        sessionId,
+        settings
+      });
+    } catch (bErr) {
+      console.warn('[Boardroom auto-convene error]:', bErr.message);
+    }
+
     // Update Session State to DELIVERED
     db.prepare(`
       UPDATE chat_sessions 
@@ -568,7 +581,7 @@ export async function handleOrchestratedConversation({
           `  - 🏝️ Curated Grid & Feature Showcases\n` +
           `  - 📦 Tiered Packages & Booking Triggers\n` +
           `  - 📱 100% Mobile & Desktop Responsive Layout (Tailwind CSS)\n\n`) +
-      `*(දකුණු පස ඇති **Inter-Agent Consultation Panel** එකෙන් මම සහ Julian අතර සිදුවූ සම්පූර්ණ තාක්ෂණික සාකච්ඡාව නැරඹිය හැක.)*\n\n` +
+      `*(දකුණු පස ඇති **Executive Board Room** එකෙන් මම සහ Julian ඇතුළු අපේ squad එක අතර සිදුවූ සම්පූර්ණ සජීවී සාකච්ඡාව (Live Deliberation) සහ Kanban Roadmap එක නැරඹිය හැක.)*\n\n` +
       `### 💻 Generated Production Component Code:\n` +
       `\`\`\`html\n${specialistMockupCode}\n\`\`\`\n\n` +
       `*මෙම තීරණය ක්‍රියාත්මක කිරීමට හෝ තවත් විශේෂාංග එක් කිරීමට මට දන්වන්න!*`;
@@ -580,8 +593,17 @@ export async function handleOrchestratedConversation({
       quickReplies: category.type === 'car-rental'
         ? ['Add Payment & Security Deposit Flow', 'Add More Vehicle Categories (Vans / Bikes)', 'Export Complete Website Code']
         : ['Add Booking Checkout Page', 'Customize Color Scheme', 'Download Project Code'],
+      boardroom: boardroomResult ? {
+        id: boardroomResult.boardroomSession.id,
+        session: boardroomResult.boardroomSession,
+        messages: boardroomResult.messages,
+        tasks: boardroomResult.tasks,
+        decision: boardroomResult.decision,
+        isLive: true
+      } : null,
       dispatch: {
         id: dispatchId,
+        boardroomId: boardroomResult?.boardroomSession?.id || null,
         specialistName: specialist.name,
         specialistRole: specialist.role,
         specialistSlug: specialist.slug,

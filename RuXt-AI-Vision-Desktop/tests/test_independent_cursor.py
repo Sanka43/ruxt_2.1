@@ -15,11 +15,13 @@ def test_independent_ghost_cursor():
     ghost.stop()
 
 def test_park_click_return_user_preservation():
+    from ruxt_agent_s.core.ai_ghost_cursor import stop_ai_ghost_cursor
     executor = DesktopActionExecutor(screen_size=(1920, 1080), independent_cursor=True)
-    
-    # Perform an AI click at target (500, 500)
-    # The executor should move the AI Ghost Cursor to (500, 500) and click safely
-    executor.click(500, 500)
-    assert executor.ghost_cursor.current_x == 500
-    assert executor.ghost_cursor.current_y == 500
+    try:
+        # Perform an AI click at target (500, 500)
+        executor.click(500, 500)
+        assert executor.ghost_cursor.current_x == 500
+        assert executor.ghost_cursor.current_y == 500
+    finally:
+        stop_ai_ghost_cursor()
 

@@ -51,7 +51,13 @@ import {
   Landmark,
   Wand2,
   Sun,
-  Moon
+  Moon,
+  Monitor,
+  ListTodo,
+  BookOpen,
+  Globe,
+  AtSign,
+  Command
 } from 'lucide-react';
 
 function EngineStatusControl({ providerId, currentStatus, onSetStatus }) {
@@ -111,6 +117,72 @@ export const AVATAR_MAP = {
   'marcus-sterling': '/agent-avatars/marcus-sterling.png',
   'numbers': '/agent-avatars/numbers.png'
 };
+
+export const SLASH_ACTIONS = [
+  {
+    id: 'pc-control',
+    prefix: '/pc-control',
+    title: 'PC & Desktop Control',
+    description: 'Autonomous Windows desktop operator: launch apps, type, click & operate physical screen live',
+    category: 'Vision Engine',
+    icon: Monitor,
+    badgeColor: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
+  },
+  {
+    id: 'plan',
+    prefix: '/plan',
+    title: 'Planning Mode',
+    description: 'Formulate a rigorous, step-by-step implementation plan before proposing execution',
+    category: 'Planning',
+    icon: ListTodo,
+    badgeColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
+  },
+  {
+    id: 'learn',
+    prefix: '/learn',
+    title: 'Learn & Remember',
+    description: 'Teach persistent rules, guidelines, or cognitive workspace skills to agents',
+    category: 'Memory',
+    icon: BookOpen,
+    badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+  },
+  {
+    id: 'browser',
+    prefix: '/browser',
+    title: 'Browser Automation',
+    description: 'Live web navigation, scraping, form filling & website interaction',
+    category: 'Web',
+    icon: Globe,
+    badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+  },
+  {
+    id: 'boost',
+    prefix: '/boost',
+    title: 'Deep Boost Mode',
+    description: 'High-reasoning multi-perspective analysis and deep codebase verification',
+    category: 'Intelligence',
+    icon: Zap,
+    badgeColor: 'bg-purple-500/20 text-purple-300 border-purple-500/30'
+  },
+  {
+    id: 'task',
+    prefix: '/task',
+    title: 'Create Project Task',
+    description: 'Log an actionable task card directly onto the Kanban board',
+    category: 'Task',
+    icon: CheckSquare,
+    badgeColor: 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+  },
+  {
+    id: 'clear',
+    prefix: '/clear',
+    title: 'Clear Session',
+    description: 'Reset and purge messages from the current conversation',
+    category: 'Session',
+    icon: Trash2,
+    badgeColor: 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+  }
+];
 
 export function getAgentAvatar(slug, customAvatar = null, version = null) {
   let url = '';
@@ -380,6 +452,7 @@ export default function App() {
   const [boardroomMessages, setBoardroomMessages] = useState([]);
   const [boardroomTasks, setBoardroomTasks] = useState([]);
   const [isExecutingPipeline, setIsExecutingPipeline] = useState(false);
+  const [isBoardroomLive, setIsBoardroomLive] = useState(false);
 
   // Inter-Agent Right-Side Consultation Popup State
   const [activeSubChatPopup, setActiveSubChatPopup] = useState(null);
@@ -397,6 +470,13 @@ export default function App() {
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState([]);
   const fileInputRef = React.useRef(null);
+
+  // Autocomplete Mentions (@) and Slash Actions (/) States
+  const [autocompleteMode, setAutocompleteMode] = useState(null); // 'mention' | 'action' | null
+  const [autocompleteQuery, setAutocompleteQuery] = useState('');
+  const [autocompleteIndex, setAutocompleteIndex] = useState(0);
+  const chatInputRef = useRef(null);
+  const autocompleteListRef = useRef(null);
 
   // Sidebar Agents collapsible list state
   const [isAgentsOpen, setIsAgentsOpen] = useState(true);
@@ -1108,6 +1188,8 @@ export default function App() {
       setIsRecordingVoice(false);
     }
 
+    setAutocompleteMode(null);
+    setAutocompleteQuery('');
     setInputMessage('');
     setLoadingMessage(true);
 
@@ -1158,6 +1240,19 @@ export default function App() {
         // Auto-open right-side inter-agent consultation popup when team deliberation occurs
         if (data.dispatch) {
           setActiveSubChatPopup(data.dispatch);
+        }
+
+        // Auto-open right-side Board Room and stream deliberation live when task involves squad
+        if (data.boardroom) {
+          if (data.boardroom.session) setBoardroomSession(data.boardroom.session);
+          if (data.boardroom.messages) setBoardroomMessages(data.boardroom.messages);
+          if (data.boardroom.tasks) setBoardroomTasks(data.boardroom.tasks);
+          setIsBoardroomLive(true);
+          setIsBoardRoomOpen(true);
+          fetchSafeJson('/api/tasks').then(tasksRes => {
+            if (tasksRes?.tasks) setTasks(tasksRes.tasks);
+          });
+          showNotification('🎯 Executive Board Room convened for your task!');
         }
 
         // Update session snippet and count in local state
@@ -1320,11 +1415,12 @@ export default function App() {
         setBoardroomSession(data.session);
         setBoardroomMessages(data.messages || []);
         setBoardroomTasks(data.tasks || []);
+        setIsBoardroomLive(true);
         setIsBoardRoomOpen(true);
         // Refresh global tasks list
         const tasksRes = await fetchSafeJson('/api/tasks');
         if (tasksRes?.tasks) setTasks(tasksRes.tasks);
-        showNotification(`🎯 Board Room reached consensus on: "${topic}"`);
+        showNotification(`🎯 Board Room convened on: "${topic}"`);
         if (settings.sound_haptics !== 'false') playSound('success');
       }
     } catch (err) {
@@ -1332,6 +1428,24 @@ export default function App() {
       showNotification('Failed to convene Board Room', 'error');
     } finally {
       setIsExecutingPipeline(false);
+    }
+  };
+
+  // Open specific Board Room session
+  const handleOpenBoardroomSession = async (sessionOrId) => {
+    try {
+      const bId = typeof sessionOrId === 'object' ? sessionOrId.id : sessionOrId;
+      const res = await fetch(`/api/boardroom/${bId}`);
+      const data = await res.json();
+      if (data?.success && data.session) {
+        setBoardroomSession(data.session);
+        setBoardroomMessages(data.messages || []);
+        setBoardroomTasks(data.tasks || []);
+        setIsBoardroomLive(false);
+        setIsBoardRoomOpen(true);
+      }
+    } catch (err) {
+      console.error('Open boardroom session error:', err);
     }
   };
 
@@ -1631,6 +1745,186 @@ export default function App() {
       avatar: getAgentAvatar(slug)
     };
   }, [activeSession?.agent_id, allKnownAgents]);
+
+  // Autocomplete Mentions (@) and Slash Actions (/) Filtering and Handlers
+  const filteredMentionAgents = useMemo(() => {
+    if (autocompleteMode !== 'mention') return [];
+    const q = (autocompleteQuery || '').trim().toLowerCase();
+    const list = allKnownAgents || [];
+    if (!q) return list;
+    return list.filter(a => 
+      (a.name && a.name.toLowerCase().includes(q)) ||
+      (a.role && a.role.toLowerCase().includes(q)) ||
+      (a.slug && a.slug.toLowerCase().includes(q)) ||
+      (a.description && a.description.toLowerCase().includes(q))
+    );
+  }, [autocompleteMode, autocompleteQuery, allKnownAgents]);
+
+  const filteredSlashActions = useMemo(() => {
+    if (autocompleteMode !== 'action') return [];
+    const q = (autocompleteQuery || '').trim().toLowerCase();
+    if (!q) return SLASH_ACTIONS;
+    return SLASH_ACTIONS.filter(act => 
+      act.prefix.toLowerCase().includes(q) ||
+      act.title.toLowerCase().includes(q) ||
+      act.description.toLowerCase().includes(q) ||
+      act.category.toLowerCase().includes(q)
+    );
+  }, [autocompleteMode, autocompleteQuery]);
+
+  const activeAutocompleteItems = autocompleteMode === 'mention' ? filteredMentionAgents : filteredSlashActions;
+
+  // Real-time Chat Input Change Tracker for @ mentions and / actions
+  const handleChatInputChange = (e) => {
+    const val = e.target.value;
+    setInputMessage(val);
+
+    const cursorPos = e.target.selectionStart ?? val.length;
+    const textUpToCursor = val.slice(0, cursorPos);
+
+    const atMatch = textUpToCursor.match(/(?:^|\s)@([a-zA-Z0-9_\-]*)$/);
+    const slashMatch = textUpToCursor.match(/(?:^|\s)\/([a-zA-Z0-9_\-]*)$/);
+
+    if (atMatch) {
+      setAutocompleteMode('mention');
+      setAutocompleteQuery(atMatch[1]);
+      setAutocompleteIndex(0);
+    } else if (slashMatch) {
+      setAutocompleteMode('action');
+      setAutocompleteQuery(slashMatch[1]);
+      setAutocompleteIndex(0);
+    } else {
+      setAutocompleteMode(null);
+      setAutocompleteQuery('');
+      setAutocompleteIndex(0);
+    }
+  };
+
+  // Select Mention from List
+  const handleSelectMention = (agent) => {
+    const textarea = chatInputRef.current;
+    const cursorPos = textarea ? textarea.selectionStart : inputMessage.length;
+    const textUpToCursor = inputMessage.slice(0, cursorPos);
+    const textAfterCursor = inputMessage.slice(cursorPos);
+
+    const replacedBefore = textUpToCursor.replace(/(?:^|\s)@([a-zA-Z0-9_\-]*)$/, (match) => {
+      const leadingSpace = match.startsWith(' ') || match.startsWith('\n') ? match[0] : '';
+      return `${leadingSpace}@${agent.name} `;
+    });
+
+    const newText = replacedBefore + textAfterCursor;
+    setInputMessage(newText);
+    setAutocompleteMode(null);
+    setAutocompleteQuery('');
+
+    setTimeout(() => {
+      if (textarea) {
+        textarea.focus();
+        const newPos = replacedBefore.length;
+        textarea.setSelectionRange(newPos, newPos);
+      }
+    }, 10);
+  };
+
+  // Select Slash Action from List
+  const handleSelectAction = (action) => {
+    if (action.id === 'clear') {
+      if (window.confirm('Clear all conversation messages in this active chat session?')) {
+        setMessages([]);
+        setInputMessage('');
+        setAutocompleteMode(null);
+        showNotification('Conversation messages cleared', 'info');
+        return;
+      }
+    }
+
+    const textarea = chatInputRef.current;
+    const cursorPos = textarea ? textarea.selectionStart : inputMessage.length;
+    const textUpToCursor = inputMessage.slice(0, cursorPos);
+    const textAfterCursor = inputMessage.slice(cursorPos);
+
+    const replacedBefore = textUpToCursor.replace(/(?:^|\s)\/([a-zA-Z0-9_\-]*)$/, (match) => {
+      const leadingSpace = match.startsWith(' ') || match.startsWith('\n') ? match[0] : '';
+      return `${leadingSpace}${action.prefix} `;
+    });
+
+    const newText = replacedBefore + textAfterCursor;
+    setInputMessage(newText);
+    setAutocompleteMode(null);
+    setAutocompleteQuery('');
+
+    setTimeout(() => {
+      if (textarea) {
+        textarea.focus();
+        const newPos = replacedBefore.length;
+        textarea.setSelectionRange(newPos, newPos);
+      }
+    }, 10);
+  };
+
+  // Keyboard navigation inside Autocomplete Popup
+  const handleChatInputKeyDown = (e) => {
+    if (autocompleteMode && activeAutocompleteItems.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setAutocompleteIndex((prev) => (prev + 1) % activeAutocompleteItems.length);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setAutocompleteIndex((prev) => (prev - 1 + activeAutocompleteItems.length) % activeAutocompleteItems.length);
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        const selected = activeAutocompleteItems[autocompleteIndex] || activeAutocompleteItems[0];
+        if (selected) {
+          if (autocompleteMode === 'mention') {
+            handleSelectMention(selected);
+          } else {
+            handleSelectAction(selected);
+          }
+        }
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setAutocompleteMode(null);
+        return;
+      }
+    }
+
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage(e);
+    }
+  };
+
+  // Scroll highlighted item into view in the autocomplete menu
+  useEffect(() => {
+    if (autocompleteListRef.current) {
+      const activeEl = autocompleteListRef.current.querySelector(`[data-index="${autocompleteIndex}"]`);
+      if (activeEl) {
+        activeEl.scrollIntoView({ block: 'nearest' });
+      }
+    }
+  }, [autocompleteIndex]);
+
+  // Click outside listener to dismiss autocomplete popup
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (
+        autocompleteListRef.current && 
+        !autocompleteListRef.current.contains(e.target) &&
+        chatInputRef.current &&
+        !chatInputRef.current.contains(e.target)
+      ) {
+        setAutocompleteMode(null);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
 
   // RuXt Leader Chat Sessions
   const ruxtSessions = sessions.filter(s => s.agent_id === 'ruxt' || (!s.agent_id && (s.title?.toLowerCase().includes('ruxt') || s.title === 'New Conversation')));
@@ -3167,6 +3461,61 @@ export default function App() {
                                 </div>
                               </div>
                             )}
+
+                            {/* Executive Board Room Live Deliberation Banner Trigger */}
+                            {meta?.boardroom && (
+                              <div className="mt-4 p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-emerald-500/10 border border-amber-500/30 dark:border-amber-500/40 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in fade-in duration-200">
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 to-indigo-600 flex items-center justify-center text-white shadow-md shrink-0">
+                                    <Users className="w-5 h-5" />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+                                        Executive Board Room
+                                      </span>
+                                      <span className="text-[9px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-500/30 flex items-center gap-1">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse" />
+                                        LIVE DELIBERATION
+                                      </span>
+                                    </div>
+                                    <p className="text-[11px] text-slate-600 dark:text-slate-300 font-medium truncate mt-0.5" title={meta.boardroom.session?.topic || meta.boardroom.topic}>
+                                      🎯 {meta.boardroom.session?.topic || meta.boardroom.topic || 'Squad Project Deliberation'}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (meta.boardroom.session || meta.boardroom.id) {
+                                        handleOpenBoardroomSession(meta.boardroom.session || meta.boardroom.id);
+                                      } else {
+                                        setIsBoardRoomOpen(true);
+                                      }
+                                    }}
+                                    className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/20 transition hover:scale-[1.02]"
+                                  >
+                                    <Users className="w-3.5 h-3.5 text-slate-950" />
+                                    <span>Watch Live in Board Room ↗</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveTab('tasks');
+                                      setSelectedAgentUi(null);
+                                    }}
+                                    className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition"
+                                    title="View Kanban Tasks"
+                                  >
+                                    <Layers className="w-3.5 h-3.5" />
+                                    <span>Roadmap</span>
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                             </div>
 
                             {/* Recommendation Quick-Pill Replies */}
@@ -3256,8 +3605,128 @@ export default function App() {
                 {/* Input Section Container (Borderless Layout) */}
                 <div className="max-w-5xl mx-auto w-full">
                   {/* Floating Modern Input Section (Matching User Reference Image) */}
-                  <div className="p-4 sm:p-5 pt-0">
-                  <div className="bg-white dark:bg-slate-900/90 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xl dark:shadow-2xl p-3.5 backdrop-blur transition-all focus-within:border-indigo-500/60 focus-within:ring-2 focus-within:ring-indigo-500/20">
+                  <div className="p-4 sm:p-5 pt-0 relative">
+
+                    {/* Floating Autocomplete Dropdown Menu (@ Mentions & / Slash Actions) directly above input */}
+                    {autocompleteMode && activeAutocompleteItems.length > 0 && (
+                      <div 
+                        ref={autocompleteListRef}
+                        className="absolute bottom-full mb-3 left-4 right-4 sm:left-5 sm:right-5 z-50 bg-slate-900/95 dark:bg-slate-900/98 backdrop-blur-xl border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-150 max-h-80 flex flex-col"
+                      >
+                        {/* Autocomplete Header */}
+                        <div className="flex items-center justify-between px-3.5 py-2 bg-slate-800/80 border-b border-slate-700/60 shrink-0">
+                          <div className="flex items-center gap-2">
+                            {autocompleteMode === 'mention' ? (
+                              <>
+                                <span className="w-5 h-5 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold text-xs">@</span>
+                                <span className="text-xs font-bold text-slate-200">Mention Specialist Agent</span>
+                                <span className="text-[10px] text-slate-400 font-mono">({activeAutocompleteItems.length})</span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold text-xs font-mono">/</span>
+                                <span className="text-xs font-bold text-slate-200">Actions & Commands</span>
+                                <span className="text-[10px] text-slate-400 font-mono">({activeAutocompleteItems.length})</span>
+                              </>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                            <span className="hidden sm:inline">↑↓ to navigate • Enter to select • Esc to dismiss</span>
+                          </div>
+                        </div>
+
+                        {/* Scrollable Items List */}
+                        <div className="overflow-y-auto flex-1 divide-y divide-slate-800/50 p-1">
+                          {autocompleteMode === 'mention' ? (
+                            activeAutocompleteItems.map((ag, idx) => {
+                              const isSelected = idx === autocompleteIndex;
+                              return (
+                                <div
+                                  key={ag.slug || idx}
+                                  data-index={idx}
+                                  onMouseEnter={() => setAutocompleteIndex(idx)}
+                                  onClick={() => handleSelectMention(ag)}
+                                  className={`flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition ${
+                                    isSelected 
+                                      ? 'bg-indigo-600/30 text-white border-l-4 border-indigo-500 shadow-sm' 
+                                      : 'hover:bg-slate-800/50 text-slate-300'
+                                  }`}
+                                >
+                                  <div className="relative shrink-0">
+                                    <img 
+                                      src={ag.avatar} 
+                                      alt={ag.name} 
+                                      className="w-8 h-8 rounded-full object-cover border border-slate-700"
+                                      onError={(e) => { e.target.style.display = 'none'; }}
+                                    />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs font-bold truncate text-white">{ag.name}</span>
+                                      <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-indigo-500/20 text-indigo-300 font-medium border border-indigo-500/30 shrink-0">
+                                        {ag.role}
+                                      </span>
+                                      {ag.slug === 'ruxt' && (
+                                        <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
+                                          LEADER
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-[11px] text-slate-400 truncate mt-0.5">{ag.description}</p>
+                                  </div>
+                                  {isSelected && (
+                                    <div className="text-[10px] font-mono text-indigo-400 bg-indigo-950/60 px-2 py-0.5 rounded border border-indigo-500/40 shrink-0">
+                                      Tab ↵
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })
+                          ) : (
+                            activeAutocompleteItems.map((act, idx) => {
+                              const isSelected = idx === autocompleteIndex;
+                              const IconComp = act.icon || Terminal;
+                              return (
+                                <div
+                                  key={act.id}
+                                  data-index={idx}
+                                  onMouseEnter={() => setAutocompleteIndex(idx)}
+                                  onClick={() => handleSelectAction(act)}
+                                  className={`flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition ${
+                                    isSelected 
+                                      ? 'bg-cyan-600/25 text-white border-l-4 border-cyan-400 shadow-sm' 
+                                      : 'hover:bg-slate-800/50 text-slate-300'
+                                  }`}
+                                >
+                                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border ${
+                                    isSelected ? 'bg-cyan-500/20 border-cyan-400/50 text-cyan-300' : 'bg-slate-800 border-slate-700 text-slate-400'
+                                  }`}>
+                                    <IconComp className="w-4 h-4" />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs font-mono font-bold text-cyan-300">{act.prefix}</span>
+                                      <span className="text-xs font-semibold text-white">{act.title}</span>
+                                      <span className={`text-[10px] px-1.5 py-0.2 rounded font-medium border shrink-0 ${act.badgeColor}`}>
+                                        {act.category}
+                                      </span>
+                                    </div>
+                                    <p className="text-[11px] text-slate-400 truncate mt-0.5">{act.description}</p>
+                                  </div>
+                                  {isSelected && (
+                                    <div className="text-[10px] font-mono text-cyan-400 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-500/40 shrink-0">
+                                      Tab ↵
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="bg-white dark:bg-slate-900/90 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xl dark:shadow-2xl p-3.5 backdrop-blur transition-all focus-within:border-indigo-500/60 focus-within:ring-2 focus-within:ring-indigo-500/20">
                     
                     {/* Attached Files Preview Bar (if any) */}
                     {attachedFiles.length > 0 && (
@@ -3286,15 +3755,11 @@ export default function App() {
 
                     {/* Textarea Input matching placeholder "Ask anything, @ to mention, / for actions" */}
                     <textarea
+                      ref={chatInputRef}
                       rows={2}
                       value={inputMessage}
-                      onChange={(e) => setInputMessage(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
-                          handleSendMessage(e);
-                        }
-                      }}
+                      onChange={handleChatInputChange}
+                      onKeyDown={handleChatInputKeyDown}
                       onPaste={handlePasteClipboard}
                       placeholder="Ask anything, @ to mention, / for actions"
                       className="w-full bg-transparent border-0 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-xs sm:text-sm focus:outline-none resize-none leading-relaxed"
@@ -3569,8 +4034,15 @@ export default function App() {
           setActiveTab('tasks');
           setSelectedAgentUi(null);
         }}
+        onTasksUpdated={(newTasks) => {
+          setBoardroomTasks(newTasks);
+          fetchSafeJson('/api/tasks').then(res => {
+            if (res?.tasks) setTasks(res.tasks);
+          });
+        }}
         isExecuting={isExecutingPipeline}
         getAgentAvatar={getAgentAvatar}
+        isLive={isBoardroomLive}
       />
 
       {/* Specialist Resume Modal */}

@@ -1,23 +1,30 @@
-# RuXt AI Vision Desktop Configuration (Powered by Agent-S Architecture)
+# RuXt AI Vision Desktop Configuration
+# Enhanced with Microsoft OmniParser v2, Claude 3.5/3.7, UI-TARS, and PyAutoGUI + PyWinAuto Hybrid
 
 # AI Provider Settings
-# Supported providers: "antigravity", "openai", "anthropic", "gemini", "ollama", "openrouter"
-provider: "antigravity"
-model: "flash"
-api_key: ""           # Or set via environment variables (OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY)
-base_url: ""          # Optional custom base URL (e.g. for Ollama: http://localhost:11434/v1)
+# Supported providers: "auto" (Speed Priority Ladder: Gemini 3.5 Flash -> Claude Sonnet -> OpenAI -> Antigravity), "gemini", "anthropic", "ui-tars", "openai", "antigravity", "ollama"
+provider: "auto"
+model: "gemini-3.5-flash"     # or "claude-3-5-sonnet-20241022", "claude-3-7-sonnet-20250219", "ui-tars-7b", "gpt-4o-mini"
+api_key: ""                   # Discovered automatically from RuXt Settings DB or environment variables
+base_url: ""                  # Optional custom base URL (e.g. for Ollama: http://localhost:11434/v1)
 
-# Vision Grounding Settings
+# Vision Grounding & Microsoft OmniParser v2 Settings
 grounding:
-  use_uia_tree: true          # Use Windows UI Automation tree to assist coordinate lookup
+  use_omniparser: true        # Microsoft OmniParser v2 Set-of-Marks (SOM) clickable icon tagging
+  omniparser_mode: "hybrid"   # "hybrid" (built-in fast SOM), "endpoint" (remote OmniParser v2 server)
+  omniparser_endpoint: ""     # Optional custom OmniParser v2 server URL (e.g. http://localhost:8000)
+  use_uia_tree: false         # Fallback UIA tree scan
   coordinate_scale: 1000      # Grounding normalized coordinates scale (0-1000)
-  screenshot_max_width: 1920  # Max width to resize for LLM token efficiency
-  screenshot_max_height: 1080
+  screenshot_max_width: 1280  # Optimized width to maximize inference speed & reduce token usage
+  screenshot_max_height: 720
 
-# Execution & Automation Settings
+# Execution & Automation Settings (Hybrid PyAutoGUI + PyWinAuto)
 execution:
-  mouse_move_duration: 0.15   # Smooth fluid mouse movement time in seconds
-  action_delay: 0.2           # Rapid delay between consecutive actions
+  hybrid_uia_pyautogui: true  # Native Windows UIA controls + PyAutoGUI
+  cursor_mode: "direct"       # "direct" (Single unified real cursor, no duplicate) or "ghost" (Floating overlay)
+  independent_cursor: false   # Single cursor mode by default (disables dual cursor complexity)
+  mouse_move_duration: 0.20   # Smooth visible human-like glide
+  action_delay: 0.10          # Minimal action delay between consecutive steps
   type_via_clipboard: true    # Unicode safe typing on Windows via clipboard
   failsafe: true              # PyAutoGUI failsafe (slam mouse to screen corner to abort)
 

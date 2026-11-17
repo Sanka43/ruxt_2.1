@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
 import { activeDesktopJobs } from './desktopAutomation.js';
+import { setAiCursor } from './visionComputerUse.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -106,6 +107,7 @@ export async function startLiveDesktopExecution({
   // Run the asynchronous execution pipeline in background
   (async () => {
     try {
+      setAiCursor(true);
       broadcast({
         type: 'start',
         jobId,
@@ -356,6 +358,8 @@ export async function startLiveDesktopExecution({
         jobId,
         error: err.message
       });
+    } finally {
+      setAiCursor(false);
     }
   })();
 
@@ -366,6 +370,7 @@ export async function startLiveDesktopExecution({
  * Abort a running desktop task
  */
 export function abortLiveDesktopExecution(jobId) {
+  setAiCursor(false);
   const job = activeDesktopJobs.get(jobId);
   if (!job) return false;
   job.aborted = true;

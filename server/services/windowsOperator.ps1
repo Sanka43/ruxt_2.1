@@ -14,7 +14,8 @@ param (
     [string]$OutFile = "",
     [string]$Key = "",
     [string]$Modifier = "",
-    [int]$ScrollAmount = -120
+    [int]$ScrollAmount = -120,
+    [string]$CursorPath = ""
 )
 
 Add-Type -AssemblyName System.Windows.Forms
@@ -190,29 +191,52 @@ public class WinDesktopEngine {
     [DllImport("user32.dll")]
     public static extern bool SetSystemCursor(IntPtr hcur, uint id);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern IntPtr CopyIcon(IntPtr hIcon);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool DestroyCursor(IntPtr hCursor);
+
     [DllImport("user32.dll")]
     public static extern bool SystemParametersInfo(uint uiAction, uint uiParam, IntPtr pvParam, uint fWinIni);
 
     public const uint IMAGE_CURSOR = 2;
     public const uint LR_LOADFROMFILE = 0x00000010;
     public const uint OCR_NORMAL = 32512;
+    public const uint OCR_HAND = 32649;
+    public const uint OCR_APPSTARTING = 32650;
     public const uint SPI_SETCURSORS = 0x0057;
 
-    public static bool SetAiCursor(bool active) {
+    public static readonly uint[] AI_CURSORS = new uint[] {
+        32512, // OCR_NORMAL
+        32649, // OCR_HAND
+        32650  // OCR_APPSTARTING
+    };
+
+    public static bool SetAiCursor(bool active, string cursorPath) {
         if (active) {
-            string cursorPath = @"C:\Windows\Cursors\arrow_r.cur";
-            if (!System.IO.File.Exists(cursorPath)) {
-                cursorPath = @"C:\Windows\Cursors\arrow_rm.cur";
-            }
-            if (System.IO.File.Exists(cursorPath)) {
-                IntPtr hCur = LoadImage(IntPtr.Zero, cursorPath, IMAGE_CURSOR, 0, 0, LR_LOADFROMFILE);
-                if (hCur != IntPtr.Zero) {
-                    return SetSystemCursor(hCur, OCR_NORMAL);
-                }
+            if (!string.IsNullOrEmpty(cursorPath) && System.IO.File.Exists(cursorPath)) {
+                try {
+                    bool any = false;
+                    foreach (uint id in AI_CURSORS) {
+                        IntPtr hcur = LoadImage(IntPtr.Zero, cursorPath, IMAGE_CURSOR, 36, 36, LR_LOADFROMFILE);
+                        if (hcur == IntPtr.Zero) {
+                            hcur = LoadImage(IntPtr.Zero, cursorPath, IMAGE_CURSOR, 0, 0, LR_LOADFROMFILE);
+                        }
+                        if (hcur != IntPtr.Zero) {
+                            IntPtr copy = CopyIcon(hcur);
+                            SetSystemCursor(copy, id);
+                            DestroyCursor(hcur);
+                            any = true;
+                        }
+                    }
+                    return any;
+                } catch {}
             }
             return false;
         } else {
-            return SystemParametersInfo(SPI_SETCURSORS, 0, IntPtr.Zero, 0);
+            SystemParametersInfo(SPI_SETCURSORS, 0, IntPtr.Zero, 0);
+            return true;
         }
     }
 
@@ -957,7 +981,24 @@ switch ($Action.ToLower()) {
     }
 
     "set_ai_cursor" {
-        $ok = [WinDesktopEngine]::SetAiCursor($true)
+        if ([string]::IsNullOrEmpty($CursorPath) -or -not (Test-Path $CursorPath)) {
+            $parent = Split-Path $PSScriptRoot -Parent
+            $candidates = @(
+                (Join-Path $PSScriptRoot "assets\ruxt_neon.cur"),
+                (Join-Path $parent "assets\ruxt_neon.cur"),
+                (Join-Path $PSScriptRoot "..\..\RuXt-AI-Vision-Desktop\ruxt_agent_s\assets\ruxt_neon.cur"),
+                (Join-Path $PSScriptRoot "..\..\public\assets\ruxt_neon.cur"),
+                (Join-Path (Split-Path $parent -Parent) "RuXt-AI-Vision-Desktop\ruxt_agent_s\assets\ruxt_neon.cur"),
+                (Join-Path (Split-Path $parent -Parent) "public\assets\ruxt_neon.cur")
+            )
+            foreach ($cand in $candidates) {
+                if ($cand -and (Test-Path $cand)) {
+                    $CursorPath = (Resolve-Path $cand).Path
+                    break
+                }
+            }
+        }
+        $ok = [WinDesktopEngine]::SetAiCursor($true, $CursorPath)
         if ($ok) {
             Write-Output "OK:AI_CURSOR_SET"
         } else {
@@ -966,7 +1007,7 @@ switch ($Action.ToLower()) {
     }
 
     "restore_cursor" {
-        $ok = [WinDesktopEngine]::SetAiCursor($false)
+        $ok = [WinDesktopEngine]::SetAiCursor($false, "")
         if ($ok) {
             Write-Output "OK:CURSOR_RESTORED"
         } else {

@@ -556,7 +556,12 @@ async function callGemini({ apiKey, model, systemPrompt, userMessage, history, i
         }
       ];
 
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey.trim()}`;
+      let targetModel = model || 'gemini-3.5-flash';
+      if (['gemini-2.0-flash', 'gemini-1.5-flash', 'flash', 'gemini-2.5-flash'].includes(targetModel)) {
+        targetModel = 'gemini-3.5-flash';
+      }
+
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${apiKey.trim()}`;
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

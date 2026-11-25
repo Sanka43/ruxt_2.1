@@ -17,14 +17,19 @@ import {
   startVisionDesktopExecution, 
   stopScreenBorder,
   setAiCursor,
-  resumeVisionDesktopJob
+  resumeVisionDesktopJob,
+  submitApprovalDecision
 } from '../services/visionComputerUse.js';
 import { generateAIResponse } from '../services/aiProvider.js';
 import db, { dataDir } from '../db.js';
 import os from 'os';
+import { requireDesktopAutomation } from '../services/platformGuard.js';
 import { loadSettingRows, providerKeyEnv } from '../services/secretStore.js';
 
 const router = Router();
+
+// Windows-only features answer 501 elsewhere instead of crashing inside PowerShell
+router.use(['/execute-live', '/execute-vision', '/execute-agent-s', '/launch', '/open-explorer', '/resume', '/approval'], requireDesktopAutomation);
 
 // Apps the UI may launch directly. Apps the user configured via app_path_<name> are also allowed.
 const LAUNCHABLE_APPS = new Set(['blender', 'vscode', 'cursor', 'notepad', 'chrome', 'paint']);
@@ -432,6 +437,12 @@ router.post('/resume', (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// 8. Safety gate: answer a pending "approve this risky action?" request
+router.post('/approval', (req, res) => {
+  const result = submitApprovalDecision(req.body?.decision);
+  res.status(result.error === 'No approval is pending' ? 409 : result.success ? 200 : 400).json(result);
 });
 
 export default router;

@@ -50,7 +50,9 @@ export function getSignalFilePaths(filename) {
 export function cleanupSignals() {
   const signalFiles = [
     ...getSignalFilePaths('resume.signal'),
-    ...getSignalFilePaths('abort.signal')
+    ...getSignalFilePaths('abort.signal'),
+    ...getSignalFilePaths('approve.signal'),
+    ...getSignalFilePaths('deny.signal')
   ];
   for (const sf of signalFiles) {
     if (sf.includes('app.asar')) continue;
@@ -207,6 +209,45 @@ export function resumeVisionDesktopJob(jobId = null) {
     console.error('[Vision Computer Use] Resume error:', err);
     return false;
   }
+}
+
+/**
+ * Answers a pending "approve this risky action?" request from the vision agent.
+ * Only accepted while a job is actually waiting, so a stray call cannot pre-approve anything.
+ */
+export function submitApprovalDecision(decision) {
+  const verdict = decision === 'approve' ? 'approve' : decision === 'deny' ? 'deny' : null;
+  if (!verdict) return { success: false, error: "decision must be 'approve' or 'deny'" };
+
+  const waiting = [...activeDesktopJobs.entries()].filter(([, job]) => job.pendingApproval);
+  if (waiting.length === 0) return { success: false, error: 'No approval is pending' };
+
+  const filename = verdict === 'approve' ? 'approve.signal' : 'deny.signal';
+  let written = 0;
+  for (const p of getSignalFilePaths(filename)) {
+    if (p.includes('app.asar')) continue;
+    try {
+      const dir = path.dirname(p);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(p, `${verdict}:${Date.now()}`);
+      written++;
+    } catch (err) {
+      console.warn(`[Vision Computer Use] Could not write ${filename} to ${p}:`, err.message);
+    }
+  }
+
+  for (const [id, job] of waiting) {
+    job.pendingApproval = null;
+    job.lifecycleState = TaskLifecycleState.EXECUTING;
+    for (const res of job.subscribers) {
+      try {
+        res.write(`data: ${JSON.stringify({ type: 'approval_resolved', jobId: id, decision: verdict })}
+
+`);
+      } catch (_) {}
+    }
+  }
+  return { success: written > 0, decision: verdict };
 }
 
 export function setAiCursor(active = true) {
@@ -468,6 +509,21 @@ export async function startVisionDesktopExecution({
                     description: parsed.message || 'Please complete action on screen and click Continue',
                     actionIcon: '🔑'
                   });
+                } else if (parsed.event === 'approval_required') {
+                  jobState.pendingApproval = { reason: parsed.reason, action: parsed.action, at: Date.now() };
+                  completionController.transitionTo(TaskLifecycleState.WAITING_FOR_USER, parsed.message);
+                  broadcast({
+                    type: 'approval_required',
+                    jobId,
+                    message: parsed.message || 'Approve this action?',
+                    reason: parsed.reason,
+                    action: parsed.action,
+                    description: parsed.message || 'Approve this action?',
+                    actionIcon: '🛡️'
+                  });
+                } else if (parsed.event === 'approval_resolved') {
+                  jobState.pendingApproval = null;
+                  broadcast({ type: 'approval_resolved', jobId, decision: parsed.decision });
                 } else if (parsed.event === 'finish') {
                   if (parsed.success) {
                     completionController.recordEvidence('task_outcome_satisfied', { verified: true });
@@ -490,6 +546,7 @@ export async function startVisionDesktopExecution({
           child.on('close', (code) => {
             console.log(`[Vision Agent Closed]: Exit code ${code}`);
             jobState.childProcess = null;
+            jobState.pendingApproval = null;
             if (code === 0) {
               completionController.recordEvidence('task_outcome_satisfied', { verified: true });
             }

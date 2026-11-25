@@ -27,6 +27,7 @@ export default function DesktopLiveOperatorCard({ desktopAction, headless = fals
   const [visionSnapshot, setVisionSnapshot] = useState(null);
   const [targetCoord, setTargetCoord] = useState(null);
   const [aiThought, setAiThought] = useState('');
+  const [approval, setApproval] = useState(null); // pending safety-gate request, if any
   const logEndRef = useRef(null);
   const canvasRef = useRef(null);
 
@@ -81,6 +82,25 @@ export default function DesktopLiveOperatorCard({ desktopAction, headless = fals
               progress: data.progress
             });
           }
+        } else if (data.type === 'approval_required') {
+          setApproval({ message: data.message, reason: data.reason, action: data.action });
+          window.ruxtDesktop?.updateOverlay?.({
+            type: 'approval_required',
+            taskName: jobState.taskTitle,
+            message: data.message,
+            reason: data.reason
+          });
+        } else if (data.type === 'approval_resolved') {
+          setApproval(null);
+          window.ruxtDesktop?.updateOverlay?.({ type: 'approval_resolved' });
+        } else if (data.type === 'waiting_for_user') {
+          window.ruxtDesktop?.updateOverlay?.({
+            type: 'waiting_for_user',
+            taskName: jobState.taskTitle,
+            message: data.message
+          });
+        } else if (data.type === 'resumed') {
+          window.ruxtDesktop?.updateOverlay?.({ type: 'resumed' });
         } else if (data.type === 'step_done') {
           setProgress(data.progress || 100);
         } else if (data.type === 'complete') {
@@ -224,6 +244,17 @@ export default function DesktopLiveOperatorCard({ desktopAction, headless = fals
   }, []);
 
   // 3. Action Handlers
+  const answerApproval = async (decision) => {
+    setApproval(null);
+    try {
+      await fetch('/api/desktop/approval', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision })
+      });
+    } catch (_) {}
+  };
+
   const handleAbort = async () => {
     if (!jobId) return;
     setStatus('aborted');
@@ -300,6 +331,25 @@ export default function DesktopLiveOperatorCard({ desktopAction, headless = fals
 
         {/* Action Controls */}
         <div className="flex items-center gap-2">
+          {status === 'running' && approval && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/40" role="alert">
+              <span className="text-xs font-semibold text-amber-700 dark:text-amber-300 max-w-[260px] truncate" title={approval.message}>
+                🛡️ {approval.message || 'Approve this action?'}
+              </span>
+              <button
+                onClick={() => answerApproval('approve')}
+                className="px-2.5 py-1 rounded-md bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40 text-xs font-bold transition"
+              >
+                Approve
+              </button>
+              <button
+                onClick={() => answerApproval('deny')}
+                className="px-2.5 py-1 rounded-md bg-rose-500/15 hover:bg-rose-500/30 text-rose-700 dark:text-rose-300 border border-rose-500/30 text-xs font-bold transition"
+              >
+                Deny
+              </button>
+            </div>
+          )}
           {status === 'running' && (
             <button
               onClick={handleAbort}

@@ -13,6 +13,7 @@ import {
 } from '../services/desktopAutomation.js';
 import { startLiveDesktopExecution } from '../services/desktopOperator.js';
 import { startVisionDesktopExecution } from '../services/visionComputerUse.js';
+import { desktopAutomationSupported, DESKTOP_UNSUPPORTED_MESSAGE } from '../services/platformGuard.js';
 import { 
   extractCapCutTaskContract, 
   executeCapCutDraftGeneration 
@@ -428,6 +429,15 @@ Respond dynamically to the user in their language (Sinhala/English). Acknowledge
       if (isExplicitPcControlPhrase) {
         isDesktopIntent = true;
       }
+    }
+
+    if (isDesktopIntent && !desktopAutomationSupported()) {
+      isDesktopIntent = false;
+      systemPrompt = `--- NOTICE ---
+${DESKTOP_UNSUPPORTED_MESSAGE} Tell the user this politely and offer to help another way.
+---
+
+${systemPrompt}`;
     }
 
     if (isDesktopIntent) {

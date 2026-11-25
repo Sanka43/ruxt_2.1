@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld('ruxtDesktop', {
   hideOverlay: () => ipcRenderer.send('desktop-overlay-hide'),
   abortTask: () => ipcRenderer.send('desktop-overlay-abort'),
   resumeTask: () => ipcRenderer.send('desktop-overlay-resume'),
+  answerApproval: (decision) => ipcRenderer.send('desktop-overlay-approval', decision),
   setIgnoreMouseEvents: (ignore, options) => ipcRenderer.send('desktop-overlay-set-ignore-mouse', ignore, options),
   onBannerUpdate: (cb) => {
     ipcRenderer.on('banner-update-data', (_event, data) => cb(data));

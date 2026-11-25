@@ -3,12 +3,14 @@ import os from 'os';
 import path from 'path';
 import fs from 'fs';
 import db from '../db.js';
+import { desktopAutomationSupported } from '../services/platformGuard.js';
 
 const router = Router();
 
 router.get('/status', (req, res) => {
   res.json({
     app: 'ruxt',
+    desktopAutomation: desktopAutomationSupported(),
     status: 'online',
     version: '2.1.0',
     mode: process.env.NODE_ENV || 'production',

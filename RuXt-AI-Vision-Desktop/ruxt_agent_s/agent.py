@@ -13,6 +13,8 @@ from .core.actions import DesktopActionExecutor
 from .core.cursor import set_ai_cursor
 from .core.ai_ghost_cursor import get_ai_ghost_cursor, stop_ai_ghost_cursor
 from .core.grounding import VisualGrounder, OmniParserV2Grounder
+from .core.loop_guard import LoopGuard, STOP as LOOP_STOP, WARN as LOOP_WARN
+from .core.safety import BLOCK, CONFIRM, classify_action, safety_mode
 from .core.observation import ScreenObserver, ScreenState
 from .core.uia_grounding import WindowsUIAGrounder
 from .llm.client import MultiModalLLMClient
@@ -84,6 +86,7 @@ class RuXtVisionAgent:
         )
 
         self.history: List[Dict[str, Any]] = []
+        self.loop_guard = LoopGuard()
 
         # Clean up any leftover signals from previous aborted runs
         for ap in self._get_signal_paths("abort.signal"):
@@ -223,6 +226,18 @@ class RuXtVisionAgent:
                     args.append(str(arg))
 
             logger.info(f"Executing: func={func_name} args={args} kwargs={kwargs}")
+
+            # Safety gate: nothing risky touches the mouse/keyboard without passing this first
+            verdict = classify_action(func_name, args, kwargs)
+            if verdict.level == BLOCK:
+                logger.warning(f"Action blocked by safety policy: {func_name} ({verdict.reason})")
+                return f"BLOCKED_BY_SAFETY: {verdict.reason}. Choose a safer approach or ask the user."
+            if verdict.level == CONFIRM and safety_mode() != "off":
+                decision = self._request_approval(func_name, verdict.reason, action_call)
+                if decision == "aborted":
+                    return "USER_INTERVENTION_ABORTED"
+                if decision != "approved":
+                    return f"ACTION_DENIED_BY_USER: {verdict.reason}. Do not retry this action; find another way or finish."
 
             if func_name == "click":
                 box_id = kwargs.get("box_id", None)
@@ -454,6 +469,79 @@ class RuXtVisionAgent:
                 return True
         return False
 
+    def _request_approval(self, func_name: str, reason: str, action_call: str, max_wait: float = 120.0) -> str:
+        """
+        Pauses before a risky action and waits for the user to Approve or Deny it in the HUD.
+        Returns 'approved', 'denied', 'aborted' or 'timeout' (timeout counts as a denial).
+        """
+        logger.info(f"=== Approval requested for {func_name}: {reason} ===")
+        try:
+            set_ai_cursor(False)  # give the user the real cursor so they can click Approve/Deny
+        except Exception:
+            pass
+
+        approve_files = self._get_signal_paths("approve.signal")
+        deny_files = self._get_signal_paths("deny.signal")
+        abort_files = self._get_signal_paths("abort.signal")
+
+        # Drop stale decisions from earlier requests so they can't auto-answer this one
+        for sf in approve_files + deny_files:
+            try:
+                sf.parent.mkdir(parents=True, exist_ok=True)
+                if sf.exists():
+                    sf.unlink()
+            except Exception:
+                pass
+
+        event = {
+            "event": "approval_required",
+            "message": f"Approve this action? {reason}",
+            "reason": reason,
+            "action": action_call[:200],
+            "step": len(self.history) + 1,
+            "status": "waiting_for_approval",
+        }
+        if self.on_step_callback:
+            self.on_step_callback(event)
+        try:
+            print(json.dumps(event), flush=True)
+        except Exception:
+            pass
+
+        decision = "timeout"
+        start = time.time()
+        while time.time() - start < max_wait:
+            if any(p.exists() for p in abort_files):
+                decision = "aborted"
+                break
+            if any(p.exists() for p in deny_files):
+                decision = "denied"
+                break
+            if any(p.exists() for p in approve_files):
+                decision = "approved"
+                break
+            time.sleep(0.25)
+
+        for sf in approve_files + deny_files:
+            try:
+                if sf.exists():
+                    sf.unlink()
+            except Exception:
+                pass
+
+        try:
+            print(json.dumps({"event": "approval_resolved", "decision": decision, "step": len(self.history) + 1}), flush=True)
+        except Exception:
+            pass
+        if decision != "aborted":
+            try:
+                set_ai_cursor(True)
+            except Exception:
+                pass
+            time.sleep(0.2)
+        logger.info(f"Approval decision: {decision}")
+        return decision
+
     def _handle_user_takeover(self, message: str) -> str:
         """
         Safely halts AI mouse/keyboard interaction, yields native control to the human user,
@@ -559,6 +647,7 @@ class RuXtVisionAgent:
         """
         logger.info(f"=== Starting RuXt Vision Task: '{task}' ===")
         self.history = []
+        self.loop_guard.reset()
         max_steps = self.config.agent.max_steps
 
         # Clear any stale abort signals
@@ -722,11 +811,25 @@ class RuXtVisionAgent:
                     logger.info(f"Executing chain action [{idx+1}/{len(actions_chain)}]: {act}")
                     res = self._execute_parsed_action(act)
                     results.append(res)
+                    loop_state = self.loop_guard.record(act, res)
+                    if loop_state == LOOP_STOP:
+                        logger.error(f"Stopping: the same action keeps repeating without progress: {act}")
+                        return {
+                            "success": False,
+                            "message": "Stopped: the same action was repeated many times without making progress",
+                            "history": self.history,
+                        }
+                    if loop_state == LOOP_WARN:
+                        results[-1] = res + " | LOOP_WARNING: this exact action has repeated several times with no progress; try a different approach."
                     if "USER_INTERVENTION_ABORTED" in res:
                         logger.info("User intervention aborted by user. Exiting task.")
                         return {"success": False, "message": "Task aborted by user", "history": self.history}
                     if "FINISH:" in res:
                         is_finished = True
+                        break
+                    if res.startswith(("BLOCKED_BY_SAFETY", "ACTION_DENIED_BY_USER")):
+                        # Never carry on with the rest of a chain after a refused action
+                        logger.info(f"Safety gate stopped the action chain: {res}")
                         break
                     if "USER_INTERVENTION_" in res:
                         logger.info(f"Human intervention event completed ({res}). Breaking batch to observe updated screen.")

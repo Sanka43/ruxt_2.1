@@ -383,6 +383,25 @@ function createWindow() {
     }
   });
 
+  ipcMain.on('desktop-overlay-approval', (_event, decision) => {
+    if (decision !== 'approve' && decision !== 'deny') return;
+    try {
+      const body = JSON.stringify({ decision });
+      const req = http.request({
+        hostname: '127.0.0.1',
+        port: serverPort,
+        path: '/api/desktop/approval',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+      }, (res) => { res.resume(); });
+      req.on('error', (err) => console.warn('Failed to dispatch approval to backend:', err.message));
+      req.write(body);
+      req.end();
+    } catch (err) {
+      console.error('Failed to dispatch approval:', err);
+    }
+  });
+
   ipcMain.on('desktop-overlay-resume', () => {
     try {
       const req = http.request({

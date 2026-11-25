@@ -262,6 +262,30 @@
       animation: pulseGlow 1.4s infinite alternate;
     }
 
+    .deny-btn {
+      background: rgba(239, 68, 68, 0.2);
+      border: 1.5px solid rgba(239, 68, 68, 0.7);
+      color: #fca5a5;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 7px 15px;
+      border-radius: 9999px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s ease;
+      outline: none;
+      letter-spacing: 0.3px;
+    }
+
+    .deny-btn:hover {
+      background: rgba(239, 68, 68, 0.5);
+      border-color: #ef4444;
+      color: #ffffff;
+      transform: scale(1.04);
+    }
+
     .resume-btn:hover {
       background: rgba(16, 185, 129, 0.55);
       border-color: #10b981;
@@ -334,6 +358,8 @@
         </svg>
         Continue
       </button>
+      <button class="resume-btn" id="hudApproveBtn" style="display: none;" title="Allow the AI to perform this action">Approve</button>
+      <button class="deny-btn" id="hudDenyBtn" style="display: none;" title="Do not perform this action">Deny</button>
       <button class="abort-btn" id="hudAbortBtn" title="Stop live execution (Esc)">
         <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
           <rect x="4" y="4" width="16" height="16" rx="2" />
@@ -351,6 +377,8 @@
     const iconEl = document.getElementById('hudActionIcon');
     const resumeBtn = document.getElementById('hudResumeBtn');
     const abortBtn = document.getElementById('hudAbortBtn');
+    const approveBtn = document.getElementById('hudApproveBtn');
+    const denyBtn = document.getElementById('hudDenyBtn');
 
     // Active mousemove boundary tracking for instant pointer-events toggle
     let isHoveringBanner = false;
@@ -403,6 +431,25 @@
       abortBtn.disabled = true;
     }
 
+    function setApprovalUi(active) {
+      if (approveBtn) approveBtn.style.display = active ? 'flex' : 'none';
+      if (denyBtn) denyBtn.style.display = active ? 'flex' : 'none';
+      if (borderEl) borderEl.classList.toggle('waiting-user', active);
+      if (bannerEl) bannerEl.classList.toggle('waiting-user', active);
+    }
+
+    function answerApproval(decision) {
+      if (window.ruxtDesktop && window.ruxtDesktop.answerApproval) {
+        window.ruxtDesktop.answerApproval(decision);
+      }
+      setApprovalUi(false);
+      stepEl.textContent = decision === 'approve' ? 'Approved. Continuing...' : 'Denied. The AI will pick another approach.';
+      iconEl.textContent = decision === 'approve' ? '✅' : '🚫';
+    }
+
+    if (approveBtn) approveBtn.addEventListener('click', () => answerApproval('approve'));
+    if (denyBtn) denyBtn.addEventListener('click', () => answerApproval('deny'));
+
     function triggerResume() {
       if (window.ruxtDesktop && window.ruxtDesktop.resumeTask) {
         window.ruxtDesktop.resumeTask();
@@ -434,6 +481,19 @@
       window.ruxtDesktop.onBannerUpdate((data) => {
         if (!data) return;
         
+        // 0. Safety gate: the AI wants to do something risky and needs a yes/no
+        if (data.type === 'approval_required') {
+          setApprovalUi(true);
+          if (titleEl) titleEl.textContent = 'Approval needed';
+          if (stepEl) stepEl.textContent = data.message || data.reason || 'Approve this action?';
+          if (iconEl) iconEl.textContent = '🛡️';
+          return;
+        }
+        if (data.type === 'approval_resolved') {
+          setApprovalUi(false);
+          return;
+        }
+
         // 1. Check for Human-in-the-Loop takeover state
         if (data.status === 'waiting_for_user' || data.type === 'waiting_for_user') {
           if (borderEl) borderEl.classList.add('waiting-user');

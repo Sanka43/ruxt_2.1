@@ -46,3 +46,23 @@ jobs:
           for f in server/index.js server/routes/*.js server/services/*.js electron/*.cjs; do
             node --check "$f"
           done
+
+  python-safety:
+    name: Python safety-gate tests
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install pytest
+        run: python -m pip install pytest
+
+      # These modules have no GUI dependencies, so they run on a headless runner
+      - name: Safety gate and loop guard tests
+        working-directory: RuXt-AI-Vision-Desktop
+        run: python -m pytest tests/test_safety.py tests/test_loop_guard.py -q

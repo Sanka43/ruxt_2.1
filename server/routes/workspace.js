@@ -8,11 +8,12 @@ const router = Router();
 
 router.get('/status', (req, res) => {
   res.json({
+    app: 'ruxt',
     status: 'online',
     version: '2.1.0',
     mode: process.env.NODE_ENV || 'production',
     uptime: process.uptime(),
-    port: 1234,
+    port: Number(process.env.PORT) || 1234,
     platform: process.platform,
     arch: process.arch
   });

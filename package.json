@@ -13,6 +13,8 @@
     "dev": "concurrently \"cross-env ELECTRON_RUN_AS_NODE=1 electron server/index.js\" \"vite\"",
     "build": "vite build",
     "server": "cross-env ELECTRON_RUN_AS_NODE=1 electron server/index.js",
+    "test": "node --test \"server/tests/unit/*.test.js\"",
+    "test:electron": "cross-env ELECTRON_RUN_AS_NODE=1 electron --test server/tests/unit/",
     "test:computer-use": "cross-env ELECTRON_RUN_AS_NODE=1 electron server/tests/computerUse.test.js",
     "electron:dev": "concurrently \"cross-env ELECTRON_RUN_AS_NODE=1 electron server/index.js\" \"vite\" \"cross-env NODE_ENV=development electron .\"",
     "start": "cross-env ELECTRON_RUN_AS_NODE=1 electron server/index.js",
@@ -43,6 +45,8 @@
       "server/**/*",
       "agents/**/*",
       "RuXt-AI-Vision-Desktop/**/*",
+      "!RuXt-AI-Vision-Desktop/integrations/**",
+      "!RuXt-AI-Vision-Desktop/tests/**",
       "package.json"
     ],
     "asarUnpack": [

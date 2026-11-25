@@ -151,18 +151,32 @@ const server = app.listen(PORT, HOST, () => {
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
     console.error(`[RuXt Error] Port ${PORT} is already in use.`);
+    process.exit(98); // distinct code: the desktop shell must not restart-loop on this
   } else {
     console.error('[RuXt Error]', err);
+    process.exit(1);
   }
 });
 
-// Guard against unexpected unhandled exceptions / AI timeout crashes
-process.on('uncaughtException', (err) => {
-  console.error('[RuXt Engine Uncaught Exception]:', err?.message || err);
+// Errors that just mean "the other side went away"; the process state is still sound.
+const BENIGN_ERROR_CODES = new Set(['EPIPE', 'ECONNRESET', 'ERR_STREAM_DESTROYED', 'ERR_STREAM_WRITE_AFTER_END']);
+
+// A rejected promise (e.g. an AI request timing out) must not take the engine down, but it must be visible.
+process.on('unhandledRejection', (reason) => {
+  console.error('[RuXt Engine Unhandled Rejection]:', reason instanceof Error ? reason.stack : reason);
 });
 
-process.on('unhandledRejection', (reason) => {
-  console.error('[RuXt Engine Unhandled Rejection]:', reason?.message || reason);
+// After an unknown uncaught exception the process state can't be trusted: log the stack,
+// stop accepting connections and exit non-zero so the desktop shell restarts a clean engine.
+process.on('uncaughtException', (err) => {
+  if (err && BENIGN_ERROR_CODES.has(err.code)) {
+    console.warn('[RuXt Engine] Ignored benign error:', err.code, err.message);
+    return;
+  }
+  console.error('[RuXt Engine Uncaught Exception - exiting]:', err instanceof Error ? err.stack : err);
+  const force = setTimeout(() => process.exit(1), 3000);
+  force.unref();
+  server.close(() => process.exit(1));
 });
 
 export default app;

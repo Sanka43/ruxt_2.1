@@ -20,7 +20,55 @@ let mainWindow = null;
 let overlayWindow = null;
 let lastBannerData = null;
 let serverProcess = null;
+let serverPort = 1234;
+let quitting = false;
+let serverRestarts = [];
 const isDev = process.env.NODE_ENV === 'development';
+const net = require('net');
+
+// ---- Backend port selection -------------------------------------------------
+// Reuse an already-running RuXt engine on 1234, else take 1234 if it is free, else any free port.
+function fetchStatus(port) {
+  return new Promise((resolve) => {
+    const req = http.get({ host: '127.0.0.1', port, path: '/api/status', timeout: 600 }, (res) => {
+      let body = '';
+      res.on('data', (c) => { body += c; });
+      res.on('end', () => {
+        try { resolve(res.statusCode === 200 ? JSON.parse(body) : null); } catch (_) { resolve(null); }
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+  });
+}
+
+function isPortFree(port) {
+  return new Promise((resolve) => {
+    const srv = net.createServer();
+    srv.once('error', () => resolve(false));
+    srv.once('listening', () => srv.close(() => resolve(true)));
+    srv.listen(port, '127.0.0.1');
+  });
+}
+
+function getFreePort() {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.once('error', reject);
+    srv.listen(0, '127.0.0.1', () => {
+      const { port } = srv.address();
+      srv.close(() => resolve(port));
+    });
+  });
+}
+
+async function resolveServerPort() {
+  if (isDev) return 1234; // Vite proxy targets 1234
+  const status = await fetchStatus(1234);
+  if (status && status.app === 'ruxt') return 1234;
+  if (await isPortFree(1234)) return 1234;
+  return getFreePort();
+}
 
 // Master key used by the backend to encrypt stored API keys. It is protected by the
 // OS (DPAPI/Keychain via safeStorage), so the SQLite file alone is not enough to read keys.
@@ -68,7 +116,7 @@ function installContentSecurityPolicy() {
     if (!isDev && details.resourceType === 'mainFrame') {
       try {
         const u = new URL(details.url);
-        apply = u.origin === 'http://127.0.0.1:1234' &&
+        apply = u.origin === `http://127.0.0.1:${serverPort}` &&
           !/^\/(agents|hub|overlay\.html)/.test(u.pathname) && !u.pathname.startsWith('/api');
       } catch (_) {}
     }
@@ -133,7 +181,7 @@ function createOrGetOverlayWindow() {
     }
   }
   if (!loaded) {
-    overlayWindow.loadURL('http://127.0.0.1:1234/overlay.html');
+    overlayWindow.loadURL(`http://127.0.0.1:${serverPort}/overlay.html`);
   }
 
   overlayWindow.webContents.on('did-finish-load', () => {
@@ -150,22 +198,14 @@ function createOrGetOverlayWindow() {
 }
 
 function checkServerReady(cb) {
-  const req = http.get('http://127.0.0.1:1234/api/status', (res) => {
-    cb(true);
-  });
-  req.on('error', () => {
-    cb(false);
-  });
-  req.setTimeout(400, () => {
-    req.destroy();
-    cb(false);
-  });
+  // In production the answer must come from RuXt itself, not some other app on the port
+  fetchStatus(serverPort).then((status) => cb(Boolean(status) && (isDev || status.app === 'ruxt')));
 }
 
 function startBackendServer() {
   checkServerReady((ready) => {
     if (ready) {
-      console.log('[RuXt Desktop] Backend server already running on http://localhost:1234');
+      console.log('[RuXt Desktop] Backend server already running on http://localhost:' + serverPort);
       return;
     }
     let serverScript = path.join(__dirname, '../server/index.js');
@@ -205,7 +245,7 @@ function startBackendServer() {
       env: {
         ...process.env,
         ...(masterKey ? { RUXT_MASTER_KEY: masterKey } : {}),
-        PORT: '1234',
+        PORT: String(serverPort),
         RUXT_DATA_DIR: userDataDir,
         RUXT_AGENTS_DIR: bundledAgentsDir,
         RUXT_PACKAGES_DIR: bundledPackagesDir,
@@ -223,6 +263,19 @@ function startBackendServer() {
       console.warn(`[RuXt Desktop] Backend server process exited with code ${code}, signal ${signal}`);
       if (logStream) {
         try { logStream.write(`\n[RuXt Desktop] Backend server process exited with code ${code}, signal ${signal}\n`); } catch (_) {}
+      }
+      // Crash recovery: restart after an unexpected exit (max 5 per minute, with backoff)
+      if (!quitting && typeof code === 'number' && code !== 0 && code !== 98) {
+        const now = Date.now();
+        serverRestarts = serverRestarts.filter((t) => now - t < 60000);
+        if (serverRestarts.length < 5) {
+          serverRestarts.push(now);
+          const delay = 500 * serverRestarts.length;
+          console.warn(`[RuXt Desktop] Restarting backend in ${delay}ms (attempt ${serverRestarts.length}/5)`);
+          setTimeout(() => { if (!quitting) startBackendServer(); }, delay);
+        } else {
+          console.error('[RuXt Desktop] Backend keeps crashing; giving up. See server.log in the app data folder.');
+        }
       }
     });
 
@@ -334,7 +387,7 @@ function createWindow() {
     try {
       const req = http.request({
         hostname: '127.0.0.1',
-        port: 1234,
+        port: serverPort,
         path: '/api/desktop/resume',
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
@@ -365,7 +418,7 @@ function createWindow() {
       try {
         const abortReq = http.request({
           hostname: '127.0.0.1',
-          port: 1234,
+          port: serverPort,
           path: '/api/desktop/abort-active',
           method: 'POST',
           headers: { 'Content-Type': 'application/json' }
@@ -410,7 +463,7 @@ function createWindow() {
     let sameOrigin = false;
     try {
       const o = new URL(url).origin;
-      sameOrigin = o === 'http://127.0.0.1:1234' || (isDev && o === 'http://localhost:5173');
+      sameOrigin = o === `http://127.0.0.1:${serverPort}` || (isDev && o === 'http://localhost:5173');
     } catch (_) {}
     if (!sameOrigin && !url.startsWith('file:')) {
       event.preventDefault();
@@ -418,7 +471,7 @@ function createWindow() {
     }
   });
 
-  const targetURL = isDev ? 'http://localhost:5173' : 'http://127.0.0.1:1234';
+  const targetURL = isDev ? 'http://localhost:5173' : `http://127.0.0.1:${serverPort}`;
 
   let hasLoaded = false;
   const loadWithRetry = (retries = 80, delay = 150) => {
@@ -488,7 +541,7 @@ function createWindow() {
 
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
     if (errorCode === -3) return; // Skip ERR_ABORTED when navigation is superseded
-    if (validatedURL && (validatedURL.includes('1234') || validatedURL.includes('5173'))) {
+    if (validatedURL && (validatedURL.includes(String(serverPort)) || validatedURL.includes('5173'))) {
       setTimeout(() => {
         if (mainWindow && !mainWindow.isDestroyed() && !hasLoaded) {
           mainWindow.loadURL(targetURL).then(() => { hasLoaded = true; }).catch(() => {});
@@ -587,7 +640,12 @@ function setupAutoUpdater() {
   });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  try {
+    serverPort = await resolveServerPort();
+  } catch (e) {
+    console.warn('[RuXt Desktop] Port selection failed, using 1234:', e.message);
+  }
   Menu.setApplicationMenu(null);
   // Must exist before any window loads: preload.cjs calls it synchronously
   ipcMain.on('app-get-version-sync', (event) => {
@@ -620,7 +678,12 @@ app.on('window-all-closed', () => {
   }
 });
 
+app.on('before-quit', () => {
+  quitting = true;
+});
+
 app.on('will-quit', () => {
+  quitting = true;
   if (serverProcess) {
     serverProcess.kill();
   }

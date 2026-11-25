@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mila Shah · Numbers chats</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./chat.css" />
+</head>
+<body>
+  <div class="app" id="appRoot">
+    <header class="topbar">
+      <div class="person">
+        <img class="avatar" src="../avatar.jpg" alt="Mila Shah" />
+        <div>
+          <strong>Mila Shah</strong>
+          <span id="presence">Active now · Waiting for you</span>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button type="button" class="ghost" id="navSupervisorBtn">Supervisor</button>
+        <button type="button" class="ghost" id="navChatsBtn">Chats</button>
+        <button type="button" class="primary" id="navNewBtn">＋ New chat</button>
+      </div>
+    </header>
+
+    <main class="layout" id="workspace">
+      <!-- LEFT: chat -->
+      <section class="chat-pane" id="chatPane">
+        <div class="chat-head">
+          <div class="chat-meta">
+            <strong id="chatName">Pick a chat</strong>
+            <span id="chatType">Open a chat on the right to begin</span>
+          </div>
+        </div>
+
+        <div class="thread" id="thread" aria-live="polite">
+          <div class="empty-chat" id="emptyChat">
+            <h2>Message Mila</h2>
+            <p>Pick a chat on the right — she only builds when you ask.</p>
+          </div>
+        </div>
+
+        <div class="typing" id="typing" hidden>
+          <img src="../avatar.jpg" alt="" />
+          <span><i></i><i></i><i></i></span>
+        </div>
+
+        <div class="composer-wrap">
+          <div class="chips" id="chips" hidden></div>
+          <form class="composer" id="composer">
+            <textarea id="input" rows="1" placeholder="Message Mila…" disabled></textarea>
+            <button type="submit" id="sendBtn" aria-label="Send" disabled>➤</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- RIGHT: widgets home -->
+      <aside class="side-pane" id="sidePane">
+        <section class="page page-side" id="pageChats">
+          <div class="side-head chat-shelf-head">
+            <div>
+              <p class="eyebrow">LATEST CHATS</p>
+              <h1>Latest chats</h1>
+            </div>
+            <div class="chat-shelf-actions"><button type="button" class="ghost" id="allChatsShelfBtn">All chats</button><button type="button" class="primary" id="newChatShelfBtn">＋ New</button></div>
+          </div>
+          <div class="chat-list chat-list-shelf" id="chatListMini"></div>
+
+          <div class="widgets" id="widgetStack">
+
+            <article class="widget" data-widget="overview">
+              <p class="eyebrow">WIDGET</p>
+              <strong>Overview</strong>
+              <div class="stats stats-mini" id="chatStatsPreview"></div>
+              <div class="widget-actions">
+                <a href="#overview" class="widget-link" data-page="overview">Open overview</a>
+              </div>
+            </article>
+
+            <article class="widget" data-widget="howto">
+              <p class="eyebrow">WIDGET</p>
+              <strong>How to work with Mila Shah</strong>
+              <p class="widget-snippet">Ask once, download the post, modify if needed — optional supervisor review.</p>
+              <div class="widget-actions">
+                <a href="#howto" class="widget-link" data-page="howto">Open guide</a>
+              </div>
+            </article>
+
+            <article class="widget" data-widget="supervisor" id="supervisorCard">
+              <p class="eyebrow">WIDGET</p>
+              <strong>Supervisor</strong>
+              <p class="widget-snippet" id="supervisorPreview">No supervisor assigned yet.</p>
+              <div class="widget-actions" id="supervisorActions">
+                <button type="button" class="soft" id="addSupervisorBtn">Add supervisor</button>
+                <a href="#supervisor" class="widget-link" data-page="supervisor" id="manageSupervisorLink" hidden>Manage</a>
+              </div>
+            </article>
+
+            <article class="widget" data-widget="chats">
+              <p class="eyebrow">WIDGET</p>
+              <strong>Chats</strong>
+              <p class="widget-snippet" id="chatsPreview">Your Numbers chats live here.</p>
+              <div class="widget-actions">
+                <button type="button" class="primary" id="newChatHeroBtn">＋ New</button>
+                <a href="#chats" class="widget-link" data-page="chats">View all chats</a>
+              </div>
+            </article>
+
+            <article class="widget" data-widget="templates">
+              <p class="eyebrow">WIDGET</p>
+              <strong>Templates</strong>
+              <p class="widget-snippet" id="templatesPreview">Calendar, budget, timetable, and more.</p>
+              <div class="widget-actions">
+                <a href="#templates" class="widget-link" data-page="templates">Browse templates</a>
+                <button type="button" class="soft" id="startTemplateBtn">Start from template</button>
+              </div>
+            </article>
+
+            <article class="widget" data-widget="tips">
+              <p class="eyebrow">WIDGET</p>
+              <strong>Quick tips</strong>
+              <p class="widget-snippet">One chat ≈ one spreadsheet. Be specific when asking for edits.</p>
+              <div class="widget-actions">
+                <a href="#tips" class="widget-link" data-page="tips">Open tips</a>
+              </div>
+            </article>
+
+          </div>
+        </section>
+      </aside>
+
+      <!-- Full workspace pages (opened only from buttons / links) -->
+      <section class="workspace-page" id="pageOverview" hidden>
+        <div class="workspace-page-bar">
+          <div>
+            <p class="eyebrow">PAGE</p>
+            <h1>Overview</h1>
+          </div>
+          <button type="button" class="ghost" data-back-home>Back</button>
+        </div>
+        <div class="workspace-page-body">
+          <div class="stats" id="chatStats"></div>
+          <p class="page-copy">A snapshot of Mila’s Numbers chats, ready work, waiting chats, and available templates.</p>
+        </div>
+      </section>
+
+      <section class="workspace-page" id="pageHowto" hidden>
+        <div class="workspace-page-bar">
+          <div>
+            <p class="eyebrow">PAGE</p>
+            <h1>How to work with Mila Shah</h1>
+          </div>
+          <button type="button" class="ghost" data-back-home>Back</button>
+        </div>
+        <div class="workspace-page-body">
+          <ol class="howto-list">
+            <li><strong>Open a chat</strong> — or start a new one with a Numbers template.</li>
+            <li><strong>Ask once</strong> — Mila builds only when you message her. She won’t keep going on her own.</li>
+            <li><strong>Download the post</strong> — finished work appears as a posted card with a download link.</li>
+            <li><strong>Modify or feedback</strong> — use Modify, 👍, or 👎 when you want a change.</li>
+            <li><strong>Optional supervisor</strong> — add any supervisor agent to rate her work and request a recreate if needed.</li>
+          </ol>
+        </div>
+      </section>
+
+      <section class="workspace-page" id="pageChatsAll" hidden>
+        <div class="workspace-page-bar">
+          <div>
+            <p class="eyebrow">PAGE</p>
+            <h1>All chats</h1>
+          </div>
+          <div class="workspace-page-actions">
+            <button type="button" class="primary" id="newChatFromPageBtn">＋ New</button>
+            <button type="button" class="ghost" data-back-home>Back</button>
+          </div>
+        </div>
+        <div class="workspace-page-body">
+          <p class="page-copy">Switch chat — Mila only builds when you ask.</p>
+          <div class="chat-list chat-list-full" id="chatList"></div>
+        </div>
+      </section>
+
+      <section class="workspace-page" id="pageTemplates" hidden>
+        <div class="workspace-page-bar">
+          <div>
+            <p class="eyebrow">PAGE</p>
+            <h1>Templates</h1>
+          </div>
+          <button type="button" class="ghost" data-back-home>Back</button>
+        </div>
+        <div class="workspace-page-body">
+          <p class="page-copy">Tap a template to start a new chat with that Numbers layout.</p>
+          <div class="template-grid template-grid-full" id="templateGrid"></div>
+        </div>
+      </section>
+
+      <section class="workspace-page" id="pageTips" hidden>
+        <div class="workspace-page-bar">
+          <div>
+            <p class="eyebrow">PAGE</p>
+            <h1>Quick tips</h1>
+          </div>
+          <button type="button" class="ghost" data-back-home>Back</button>
+        </div>
+        <div class="workspace-page-body">
+          <ul class="tips-list">
+            <li>One chat ≈ one spreadsheet — keep calendars and budgets separate.</li>
+            <li>Say “add a totals row” or “shade weekends” for precise edits.</li>
+            <li>Use chips under the composer for common follow-ups.</li>
+            <li>Posted work always includes a download when a file is ready.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="workspace-page" id="pageSupervisor" hidden>
+        <div class="workspace-page-bar">
+          <div>
+            <p class="eyebrow">PAGE</p>
+            <h1>Supervisor</h1>
+          </div>
+          <button type="button" class="ghost" id="cancelSupervisorBtn" data-back-home>Back</button>
+        </div>
+        <div class="workspace-page-body">
+          <div id="supervisorSlot" class="supervisor-page-slot">
+            <strong>No supervisor</strong>
+            <p>Add a supervisor to review Mila’s finished sheets.</p>
+          </div>
+          <p class="page-copy">Any installed supervisor agent can be assigned. Mila allows supervisors because her package sets <code>allowSupervisors</code>.</p>
+          <h2 class="section-title">Available supervisors</h2>
+          <div class="supervisor-pick" id="supervisorPick"></div>
+        </div>
+      </section>
+
+      <section class="workspace-page" id="pageNew" hidden>
+        <div class="workspace-page-bar">
+          <div>
+            <p class="eyebrow">PAGE</p>
+            <h1>New chat</h1>
+          </div>
+          <button type="button" class="ghost" id="cancelNewBtn" data-back-home>Back</button>
+        </div>
+        <div class="workspace-page-body">
+          <p class="page-copy">Name the chat and pick a template. Mila greets you — she won’t start Numbers until you ask.</p>
+          <div class="new-layout">
+            <form class="new-form" id="newChatForm">
+              <label>Chat name
+                <input id="newName" maxlength="80" placeholder="e.g. December calendar" required />
+              </label>
+              <label>Optional note for later
+                <textarea id="newBrief" rows="3" placeholder="Optional — paste into chat yourself when you’re ready to ask Mila"></textarea>
+              </label>
+              <fieldset>
+                <legend>Numbers template</legend>
+                <div class="template-pick" id="templatePick"></div>
+              </fieldset>
+              <div class="form-actions">
+                <button type="button" class="ghost" id="cancelNewBtn2" data-back-home>Cancel</button>
+                <button type="submit" class="primary">Open chat</button>
+              </div>
+            </form>
+
+            <aside class="preview-panel" id="templatePreview">
+              <p class="eyebrow">SHEET PREVIEW</p>
+              <h2 id="previewTitle">Monthly calendar</h2>
+              <p id="previewBlurb">Month grid, weekend shading, editable notes.</p>
+              <div class="mini-sheet" id="miniSheet" aria-hidden="true"></div>
+              <ul class="preview-meta" id="previewMeta"></ul>
+            </aside>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="./chat.js?v=mila-lina-layout-3"></script>
+</body>
+</html>

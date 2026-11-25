@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Nova Quinn · Cursor twin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Syne:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./cursor.css" />
+</head>
+<body>
+  <div class="shell">
+    <aside class="rail">
+      <p class="mark">NQ</p>
+      <div class="rail-meta">
+        <span class="rail-label">CURSOR TWIN</span>
+        <strong>Nova Quinn</strong>
+      </div>
+      <span class="pill" id="toolStatus">Checking Cursor…</span>
+    </aside>
+
+    <main class="stage">
+      <header class="hero">
+        <div>
+          <h1>Compose. Launch. Ship.</h1>
+          <p>Same loop as Cursor Agent — project, prompt, permission on RuXt, then live execution.</p>
+        </div>
+        <div class="hero-actions">
+          <button type="button" class="ghost" id="refreshBtn">Refresh</button>
+          <button type="button" class="ghost" id="stopBtn">Stop</button>
+        </div>
+      </header>
+
+      <section class="composer">
+        <div class="composer-top">
+          <label class="field grow">Project name
+            <input id="projectName" maxlength="80" placeholder="auth-refactor" />
+          </label>
+          <label class="field">Mode
+            <select id="modeSelect">
+              <option value="agent" selected>Agent — edit &amp; build</option>
+              <option value="plan">Plan — read-only plan</option>
+              <option value="ask">Ask — explain only</option>
+            </select>
+          </label>
+        </div>
+        <label class="field">Prompt for Cursor Agent
+          <textarea id="promptInput" rows="7" placeholder="Refactor the login flow, add tests, and keep the public API stable."></textarea>
+        </label>
+        <div class="composer-bar">
+          <p class="hint" id="note">Waiting for a prompt.</p>
+          <button type="button" class="primary" id="prepareBtn">Prepare run</button>
+        </div>
+      </section>
+
+      <section class="permission" id="permissionCard" hidden>
+        <div>
+          <h2>Permission</h2>
+          <p>Allow RuXt (localhost:1234) to open Cursor and run this Agent prompt?</p>
+        </div>
+        <pre id="permissionPreview"></pre>
+        <div class="composer-bar">
+          <button type="button" class="ghost" id="denyBtn">Deny</button>
+          <button type="button" class="primary" id="allowBtn">Allow &amp; run in Cursor</button>
+        </div>
+      </section>
+
+      <section class="stream">
+        <div class="stream-head">
+          <h2>Live run</h2>
+          <ol class="steps" id="stepList">
+            <li>Write project + prompt</li>
+            <li>Ask permission here</li>
+            <li>Cursor Agent executes</li>
+          </ol>
+        </div>
+        <pre class="console" id="liveBox">Ready.</pre>
+        <div class="stream-foot">
+          <button type="button" class="ghost" id="openFolderBtn" disabled>Open project folder</button>
+          <button type="button" class="ghost" id="openCursorBtn" disabled>Open in Cursor</button>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="./cursor.js"></script>
+</body>
+</html>

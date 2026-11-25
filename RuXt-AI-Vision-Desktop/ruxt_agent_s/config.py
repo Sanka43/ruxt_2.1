@@ -13,12 +13,14 @@ class GroundingConfig(BaseModel):
     coordinate_scale: int = 1000
     screenshot_max_width: int = 1280
     screenshot_max_height: int = 720
+    fast_mode: bool = True
 
 class ExecutionConfig(BaseModel):
     cursor_mode: str = "direct"
     mouse_move_duration: float = 0.20
     action_delay: float = 0.10
-    type_via_clipboard: bool = True
+    type_via_clipboard: bool = False
+    typing_interval: float = 0.025
     failsafe: bool = True
     independent_cursor: bool = False
     hybrid_uia_pyautogui: bool = True
@@ -26,6 +28,8 @@ class ExecutionConfig(BaseModel):
 class AgentConfig(BaseModel):
     max_steps: int = 25
     enable_reflection: bool = True
+    allow_action_chaining: bool = True
+    max_chain_length: int = 5
     log_level: str = "INFO"
     data_dir: str = "data"
 

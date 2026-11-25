@@ -42,9 +42,11 @@ import {
   PowerOff,
   ChevronDown,
   ChevronRight,
+  ChevronLeft,
   X,
   UserPlus,
   ArrowUp,
+  ArrowDown,
   Mic,
   Paperclip,
   Folder,
@@ -57,7 +59,20 @@ import {
   BookOpen,
   Globe,
   AtSign,
-  Command
+  Command,
+  PanelLeft,
+  PanelRight,
+  Square,
+  Layout,
+  Maximize2,
+  Minimize2,
+  Columns,
+  Edit3,
+  Home,
+  History,
+  Clock,
+  MessageSquarePlus,
+  ArrowUpRight
 } from 'lucide-react';
 
 function EngineStatusControl({ providerId, currentStatus, onSetStatus }) {
@@ -108,7 +123,16 @@ function EngineStatusControl({ providerId, currentStatus, onSetStatus }) {
 }
 
 export const AVATAR_MAP = {
-  'ruxt': '/agent-avatars/ruxt.png',
+    'ruxt': '/agent-avatars/ruxt.png',
+  'blender-3d-master': '/agent-avatars/blender-agent.png',
+  'cinecut-studio': '/agent-avatars/capcut-agent.png',
+  'damon-cole': '/agent-avatars/damon-cole.png',
+  'donald-trump': '/agent-avatars/donald-trump-supervisor.jpg',
+  'donald-trump-supervisor': '/agent-avatars/donald-trump-supervisor.jpg',
+  'lina-park': '/agent-avatars/lina-park-blender-desktop.jpg',
+  'mila-shah': '/agent-avatars/mila-shah-numbers.jpg',
+  'mrbeast': '/agent-avatars/mrbeast-youtube-coach.png',
+  'mrbeast-youtube-coach': '/agent-avatars/mrbeast-youtube-coach.png',
   'julian-vance': '/agent-avatars/julian-vance.png',
   'maya-brooks': '/agent-avatars/maya-brooks.png',
   'noah-reed': '/agent-avatars/noah-reed.png',
@@ -406,12 +430,145 @@ function evaluateMissionSquadFit(missionText, selectedSlugs, specialistList) {
   return { mismatched, recommended, aligned };
 }
 
+function FleetAgentAvatar({ agent, isLeader }) {
+  const [hasError, setHasError] = useState(false);
+  const initialLetter = (agent.name || 'A').trim().charAt(0).toUpperCase();
+
+  if (!agent.avatar || hasError) {
+    return (
+      <div className="w-full h-full flex items-center justify-center relative bg-slate-100 dark:bg-slate-800">
+        <span className="text-2xl sm:text-3xl font-bold text-indigo-600/70 dark:text-indigo-400 font-sans select-none">
+          {initialLetter}
+        </span>
+        {isLeader && (
+          <span className="absolute top-1 left-1 text-xs" title="Leader">👑</span>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full h-full relative">
+      <img
+        src={agent.avatar}
+        alt={agent.name}
+        onError={() => setHasError(true)}
+        className="w-full h-full object-cover rounded-xl"
+      />
+      {isLeader && (
+        <span className="absolute top-1 left-1 text-xs" title="Leader">👑</span>
+      )}
+    </div>
+  );
+}
+
+function FleetAgentCard({
+  agent,
+  isLeader,
+  onOpenChat,
+  onOpenUi,
+  onEdit,
+  onUninstall
+}) {
+  const category = isLeader ? 'Leadership' : (agent.manifest?.category || agent.category || 'Specialist');
+  const roleText = (agent.role || category).toUpperCase();
+  const subtitle = `${roleText}${agent.uiEntry ? ' • PACKAGE UI' : ''}`;
+
+  return (
+    <div
+      onClick={onOpenChat}
+      className={`group relative rounded-2xl p-3 sm:p-3.5 flex items-stretch gap-3 sm:gap-3.5 transition-all duration-150 border cursor-pointer ${
+        isLeader
+          ? 'bg-amber-500/[0.04] dark:bg-amber-500/[0.03] border-amber-300/70 dark:border-amber-500/30 hover:border-amber-400 dark:hover:border-amber-400/60 shadow-2xs hover:shadow-md'
+          : 'bg-white dark:bg-slate-900 border-slate-200/90 dark:border-slate-800 hover:border-indigo-500/50 dark:hover:border-indigo-500/50 shadow-2xs hover:shadow-md'
+      }`}
+    >
+      {/* Left Avatar / Letter Badge */}
+      <div className="w-16 h-16 sm:w-18 sm:h-18 lg:w-20 lg:h-20 rounded-xl overflow-hidden shrink-0 bg-slate-100 dark:bg-slate-800/80 flex items-center justify-center relative select-none border border-slate-200/60 dark:border-slate-700/60">
+        <FleetAgentAvatar agent={agent} isLeader={isLeader} />
+      </div>
+
+      {/* Right Content */}
+      <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
+        <div>
+          {/* Category / Role Badge */}
+          <div className="text-[9px] font-mono uppercase tracking-wider text-slate-400 dark:text-slate-500 truncate font-semibold">
+            {subtitle}
+          </div>
+
+          {/* Agent Name */}
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <h4 className="text-sm font-bold text-slate-900 dark:text-white truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition">
+              {agent.name}
+            </h4>
+            {isLeader && (
+              <span className="text-[8px] font-bold px-1 py-0.2 rounded bg-amber-500/20 text-amber-500 dark:text-amber-400 shrink-0">
+                LEADER
+              </span>
+            )}
+          </div>
+
+          {/* Short Description */}
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 mt-0.5 leading-relaxed">
+            {agent.description || `Autonomous specialist agent for ${agent.name}.`}
+          </p>
+        </div>
+
+        {/* Bottom Link & Actions */}
+        <div className="mt-2 flex items-center justify-between pt-1">
+          <div className="text-[11px] font-medium text-slate-600 dark:text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 flex items-center gap-0.5 transition">
+            <span>{isLeader ? 'Command leader' : 'Open agent'}</span>
+            <ArrowUpRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition" />
+          </div>
+
+          {/* Quick Actions (UI, Edit, Delete) */}
+          <div
+            className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {agent.uiEntry && (
+              <button
+                type="button"
+                onClick={onOpenUi}
+                title="Open UI Canvas"
+                className="p-1 rounded-md text-pink-500 hover:bg-pink-500/10 cursor-pointer transition"
+              >
+                <ExternalLink className="w-3 h-3" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onEdit}
+              title="Edit in Studio"
+              className="p-1 rounded-md text-slate-400 hover:text-indigo-500 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition"
+            >
+              <Edit3 className="w-3 h-3" />
+            </button>
+            {!isLeader && onUninstall && (
+              <button
+                type="button"
+                onClick={onUninstall}
+                title="Uninstall Agent"
+                className="p-1 rounded-md text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 cursor-pointer transition"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('chat');
   const [agents, setAgents] = useState([]);
   const [marketplaceAgents, setMarketplaceAgents] = useState([]);
   const [marketplaceFilter, setMarketplaceFilter] = useState('all');
   const [marketplaceSearch, setMarketplaceSearch] = useState('');
+  const [agentFleetSearch, setAgentFleetSearch] = useState('');
+  const [agentFleetFilter, setAgentFleetFilter] = useState('all');
   const [installingSlug, setInstallingSlug] = useState(null);
   const [selectedMarketAgent, setSelectedMarketAgent] = useState(null);
   const [isAgentStudioOpen, setIsAgentStudioOpen] = useState(false);
@@ -440,6 +597,66 @@ export default function App() {
     custom_model: 'default'
   });
   const [selectedAgentUi, setSelectedAgentUi] = useState(null);
+  const [chatCanvasSplit, setChatCanvasSplit] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const messagesEndRef = useRef(null);
+  const chatContainerRef = useRef(null);
+  const isAtBottomRef = useRef(true);
+  const [showScrollBottomButton, setShowScrollBottomButton] = useState(false);
+
+  // Automatically minimize sidebar when canvas/interactive UI is opened, and restore when closed
+  useEffect(() => {
+    if (selectedAgentUi) {
+      setIsSidebarCollapsed(true);
+    } else {
+      setIsSidebarCollapsed(false);
+    }
+  }, [selectedAgentUi]);
+
+  const scrollToBottom = (behavior = 'smooth') => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTo({
+        top: chatContainerRef.current.scrollHeight,
+        behavior
+      });
+    } else if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior });
+    }
+    setShowScrollBottomButton(false);
+    isAtBottomRef.current = true;
+  };
+
+  const handleChatScroll = () => {
+    const container = chatContainerRef.current;
+    if (!container) return;
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    // Considered near bottom if within 120px
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 120;
+    isAtBottomRef.current = isNearBottom;
+    setShowScrollBottomButton(!isNearBottom);
+  };
+
+  // Instant scroll to bottom when switching session
+  useEffect(() => {
+    isAtBottomRef.current = true;
+    setShowScrollBottomButton(false);
+    const timer = setTimeout(() => {
+      scrollToBottom('auto');
+    }, 60);
+    return () => clearTimeout(timer);
+  }, [activeSession?.id]);
+
+  // Keep scrolled to bottom when messages or loadingMessage change, provided user hasn't scrolled up
+  useEffect(() => {
+    const lastMsg = messages[messages.length - 1];
+    const isUserMsg = lastMsg && lastMsg.role === 'user';
+    if (isAtBottomRef.current || isUserMsg) {
+      const timer = setTimeout(() => {
+        scrollToBottom(isUserMsg ? 'smooth' : 'auto');
+      }, 60);
+      return () => clearTimeout(timer);
+    }
+  }, [messages, loadingMessage]);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskAgent, setNewTaskAgent] = useState('');
   const [notification, setNotification] = useState(null);
@@ -475,8 +692,61 @@ export default function App() {
   const [autocompleteMode, setAutocompleteMode] = useState(null); // 'mention' | 'action' | null
   const [autocompleteQuery, setAutocompleteQuery] = useState('');
   const [autocompleteIndex, setAutocompleteIndex] = useState(0);
+  const [copiedMessageId, setCopiedMessageId] = useState(null);
+  const [isChatHistoryOpen, setIsChatHistoryOpen] = useState(true);
+  const [chatHistorySearch, setChatHistorySearch] = useState('');
+
+  // Chronologically Grouped Chat Sessions for Chat History Drawer
+  const groupedSessions = useMemo(() => {
+    const filtered = (sessions || []).filter(s => {
+      if (!chatHistorySearch.trim()) return true;
+      const q = chatHistorySearch.toLowerCase();
+      return (s.title && s.title.toLowerCase().includes(q)) || 
+             (s.last_message && s.last_message.toLowerCase().includes(q)) ||
+             (s.agent_id && s.agent_id.toLowerCase().includes(q));
+    });
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const yesterday = today - 86400000;
+    const sevenDaysAgo = today - 7 * 86400000;
+
+    const groups = {
+      today: [],
+      yesterday: [],
+      pastWeek: [],
+      older: []
+    };
+
+    filtered.forEach(sess => {
+      const time = new Date(sess.updated_at || sess.created_at).getTime();
+      if (time >= today) {
+        groups.today.push(sess);
+      } else if (time >= yesterday) {
+        groups.yesterday.push(sess);
+      } else if (time >= sevenDaysAgo) {
+        groups.pastWeek.push(sess);
+      } else {
+        groups.older.push(sess);
+      }
+    });
+
+    return groups;
+  }, [sessions, chatHistorySearch]);
   const chatInputRef = useRef(null);
+  const chatAbortControllerRef = useRef(null);
   const autocompleteListRef = useRef(null);
+
+  // Auto-resize chat textarea to dynamically expand up to 5 lines as user types
+  useEffect(() => {
+    if (chatInputRef.current) {
+      chatInputRef.current.style.height = 'auto';
+      const scrollH = chatInputRef.current.scrollHeight;
+      // Min 2 lines (~48px), max 5 lines (~125px)
+      const newHeight = Math.min(Math.max(scrollH, 48), 125);
+      chatInputRef.current.style.height = `${newHeight}px`;
+    }
+  }, [inputMessage]);
 
   // Sidebar Agents collapsible list state
   const [isAgentsOpen, setIsAgentsOpen] = useState(true);
@@ -545,9 +815,6 @@ export default function App() {
       avatar: getAgentAvatar(ag.slug, ag.avatar)
     }));
   }, [agents]);
-
-  // Displayed specialist agents: 5 by default, or all if expanded
-  const displayedAgents = showAllAgents ? specialistAgents : specialistAgents.slice(0, 5);
 
   const toggleAgentInTeam = (slug) => {
     setNewTeamSelectedAgents(prev => 
@@ -710,6 +977,7 @@ export default function App() {
     const leadSlug = team.agentSlugs.includes('ruxt') ? 'ruxt' : team.agentSlugs[0];
     handleCreateSession(leadSlug, `[Squad: ${team.title}] Active Dispatch`);
     setActiveTab('chat');
+    setIsSidebarCollapsed(true);
     showNotification(`Started dispatch session with ${team.title}`);
   };
 
@@ -787,6 +1055,9 @@ export default function App() {
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
+        if (loadingMessage) {
+          handleStopMessage();
+        }
         if (isDesktopRunning) {
           handleAbortActiveDesktop();
         }
@@ -801,7 +1072,7 @@ export default function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isDesktopRunning]);
+  }, [isDesktopRunning, loadingMessage]);
 
   // Synchronize Active Theme Preset & Ergonomics across entire Application
   useEffect(() => {
@@ -952,6 +1223,13 @@ export default function App() {
   useEffect(() => {
     fetchAllData();
   }, []);
+
+  // Auto-minimize sidebar whenever an agent chat is opened
+  useEffect(() => {
+    if (activeTab === 'chat') {
+      setIsSidebarCollapsed(true);
+    }
+  }, [activeTab]);
 
   // Auto-refresh agents if switching to agent tab and list is empty
   useEffect(() => {
@@ -1192,6 +1470,12 @@ export default function App() {
     setAutocompleteQuery('');
     setInputMessage('');
     setLoadingMessage(true);
+    isAtBottomRef.current = true;
+    setShowScrollBottomButton(false);
+    setTimeout(() => scrollToBottom('smooth'), 50);
+
+    const abortController = new AbortController();
+    chatAbortControllerRef.current = abortController;
 
     let currentSession = activeSession;
     if (currentSession?.id && String(currentSession.id).startsWith('temp-')) {
@@ -1199,6 +1483,7 @@ export default function App() {
         const createRes = await fetch('/api/chat/sessions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: abortController.signal,
           body: JSON.stringify({
             title: currentSession.title || 'Chat session',
             agent_id: currentSession.agent_id || 'ruxt'
@@ -1227,6 +1512,7 @@ export default function App() {
       const res = await fetch(`/api/chat/sessions/${currentSession.id}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: abortController.signal,
         body: JSON.stringify({ 
           content: userText,
           providerOverride: settings.active_provider,
@@ -1271,10 +1557,44 @@ export default function App() {
         }));
       }
     } catch (err) {
-      console.error('Send message failed:', err);
+      if (err.name === 'AbortError') {
+        console.log('Chat generation stopped by user.');
+      } else {
+        console.error('Send message failed:', err);
+      }
     } finally {
+      chatAbortControllerRef.current = null;
       setLoadingMessage(false);
     }
+  };
+
+  // Stop active AI generation & execution on demand
+  const handleStopMessage = async () => {
+    // 1. Abort local fetch if pending
+    if (chatAbortControllerRef.current) {
+      try {
+        chatAbortControllerRef.current.abort();
+      } catch (_) {}
+      chatAbortControllerRef.current = null;
+    }
+
+    // 2. Call backend stop endpoint
+    if (activeSession?.id && !String(activeSession.id).startsWith('temp-')) {
+      fetch(`/api/chat/sessions/${activeSession.id}/stop`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      }).catch(() => {});
+    }
+
+    // 3. Stop Vision Desktop Automation if active
+    if (isDesktopRunning) {
+      handleAbortActiveDesktop();
+    }
+
+    // 4. Reset loading state and provide feedback
+    setLoadingMessage(false);
+    showNotification('⏹️ Generation stopped');
+    if (settings.sound_haptics !== 'false') playSound('toggle');
   };
 
   // Create new session (draft that only saves to DB once a message is sent)
@@ -1306,7 +1626,12 @@ export default function App() {
   // Switch session
   const handleSelectSession = (sess) => {
     setActiveSession(sess);
+    setSelectedAgentUi(null);
+    setActiveTab('chat');
+    setIsSidebarCollapsed(true);
     setMessages([]);
+    isAtBottomRef.current = true;
+    setShowScrollBottomButton(false);
     if (sess?.id && !String(sess.id).startsWith('temp-')) {
       fetchSafeJson(`/api/chat/sessions/${sess.id}/messages`).then(data => {
         if (data?.messages) setMessages(data.messages);
@@ -1344,6 +1669,7 @@ export default function App() {
   const handleOpenAgentChat = async (agentSlug, title = null) => {
     setActiveTab('chat');
     setSelectedAgentUi(null);
+    setIsSidebarCollapsed(true);
     setExpandedAgentHistories(prev => ({ ...prev, [agentSlug]: true }));
 
     // Find agent object from allKnownAgents
@@ -1380,6 +1706,31 @@ export default function App() {
     // INSTANT UI UPDATE: switch to this agent immediately with clean empty messages
     setActiveSession(immediateSession);
     setMessages([]);
+  };
+
+  // Start a fresh draft chat session with selected agent
+  const handleStartNewSession = (agentSlug = null) => {
+    setIsSidebarCollapsed(true);
+    const targetSlug = agentSlug || (activeSession?.agent_id || 'ruxt');
+    const agentObj = allKnownAgents.find(a => a.slug === targetSlug) || {
+      slug: targetSlug,
+      name: targetSlug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+      role: 'Specialist'
+    };
+    const sessionTitle = targetSlug === 'ruxt' ? 'Coordinate with RuXt (Team Leader)' : `Chat with ${agentObj.name}`;
+    const newSess = {
+      id: 'temp-' + Date.now(),
+      agent_id: targetSlug,
+      title: sessionTitle,
+      created_at: new Date().toISOString()
+    };
+    setActiveSession(newSess);
+    setMessages([]);
+    setInputMessage('');
+    if (chatInputRef.current) {
+      chatInputRef.current.focus();
+    }
+    showNotification(`Started fresh chat with ${agentObj.name}`);
   };
 
   // Fetch Active Board Room Session
@@ -1705,9 +2056,17 @@ export default function App() {
         const resolvedAvatar = a.slug === 'ruxt' 
           ? (settings.team_leader_avatar ? getAgentAvatar('ruxt', settings.team_leader_avatar, a.version) : getAgentAvatar('ruxt', a.avatar, a.version))
           : getAgentAvatar(a.slug, a.avatar, a.version);
+        const resolvedName = a.slug === 'ruxt'
+          ? (settings.team_leader_name || a.name || 'RuXt')
+          : a.name;
+        const resolvedRole = a.slug === 'ruxt'
+          ? (settings.team_leader_role || a.role || 'Team Leader & Engine Orchestrator')
+          : a.role;
         map.set(a.slug, {
           ...existing,
           ...a,
+          name: resolvedName,
+          role: resolvedRole,
           avatar: resolvedAvatar
         });
       }
@@ -1726,6 +2085,49 @@ export default function App() {
     slug: 'ruxt'
   };
 
+  // All Sidebar Agents: RuXt Leader at the top followed by Specialist Agents
+  const allSidebarAgents = useMemo(() => {
+    return [ruxtLeader, ...specialistAgents];
+  }, [ruxtLeader, specialistAgents]);
+
+  // Displayed sidebar agents: RuXt + 5 specialists (6 total) by default, or all if expanded
+  const displayedAgents = showAllAgents ? allSidebarAgents : allSidebarAgents.slice(0, 6);
+
+  // Available categories for Agent Fleet View
+  const fleetCategories = useMemo(() => {
+    const cats = new Set();
+    allSidebarAgents.forEach(a => {
+      const cat = a.isLeader ? 'Leadership' : (a.manifest?.category || a.category || 'Specialist');
+      if (cat) cats.add(cat);
+    });
+    return ['all', ...Array.from(cats)];
+  }, [allSidebarAgents]);
+
+  // Filtered agents for 3-column Agent Fleet View
+  const filteredFleetAgents = useMemo(() => {
+    return allSidebarAgents.filter(agent => {
+      const q = agentFleetSearch.toLowerCase().trim();
+      const cat = (agent.isLeader ? 'Leadership' : (agent.manifest?.category || agent.category || 'Specialist')).toLowerCase();
+      
+      if (agentFleetFilter !== 'all' && cat !== agentFleetFilter.toLowerCase()) {
+        return false;
+      }
+      
+      if (!q) return true;
+      const name = (agent.name || '').toLowerCase();
+      const role = (agent.role || '').toLowerCase();
+      const desc = (agent.description || '').toLowerCase();
+      const slug = (agent.slug || '').toLowerCase();
+      const skills = Array.isArray(agent.manifest?.skills)
+        ? agent.manifest.skills.join(' ').toLowerCase()
+        : Array.isArray(agent.skills)
+          ? agent.skills.join(' ').toLowerCase()
+          : '';
+          
+      return name.includes(q) || role.includes(q) || desc.includes(q) || slug.includes(q) || skills.includes(q);
+    });
+  }, [allSidebarAgents, agentFleetSearch, agentFleetFilter]);
+
   // Active Agent for Chat Session (Always reliably resolved to the selected agent!)
   const currentChatAgent = useMemo(() => {
     const slug = activeSession?.agent_id || 'ruxt';
@@ -1733,7 +2135,8 @@ export default function App() {
     if (found) {
       return {
         ...found,
-        avatar: getAgentAvatar(found.slug, found.avatar, found.version)
+        avatar: getAgentAvatar(found.slug, found.avatar, found.version),
+        uiEntry: found.uiEntry || (found.manifest?.ui?.entry ? `/agents/${found.slug}/${found.manifest.ui.entry}` : (found.manifest?.uiEntry ? `/agents/${found.slug}/${found.manifest.uiEntry}` : null))
       };
     }
 
@@ -1745,6 +2148,25 @@ export default function App() {
       avatar: getAgentAvatar(slug)
     };
   }, [activeSession?.agent_id, allKnownAgents]);
+
+  // Helper to check if the current chat agent has an interactive Canvas / UI
+  const currentChatAgentHasCanvas = useMemo(() => {
+    if (!currentChatAgent) return false;
+    return Boolean(
+      currentChatAgent.uiEntry ||
+      currentChatAgent.manifest?.ui?.entry ||
+      currentChatAgent.manifest?.uiEntry ||
+      currentChatAgent.manifest?.hasCustomUi ||
+      currentChatAgent.manifest?.ui
+    );
+  }, [currentChatAgent]);
+
+  // Auto-close split canvas if switched to an agent that doesn't have a canvas
+  useEffect(() => {
+    if (!currentChatAgentHasCanvas && chatCanvasSplit) {
+      setChatCanvasSplit(false);
+    }
+  }, [currentChatAgentHasCanvas]);
 
   // Autocomplete Mentions (@) and Slash Actions (/) Filtering and Handlers
   const filteredMentionAgents = useMemo(() => {
@@ -1983,332 +2405,199 @@ export default function App() {
       )}
 
       {/* Left Sidebar */}
-      <aside className="w-64 sm:w-68 border-r backdrop-blur flex flex-col justify-between transition-colors duration-250 select-none" style={{ backgroundColor: 'var(--theme-sidebar)', borderColor: 'var(--theme-border)' }}>
-        <div className="p-3.5 flex-1 overflow-y-auto space-y-3">
-          {/* Quick Team Leader Command Card with Expandable History */}
-          <div className="rounded-2xl overflow-hidden border border-transparent hover:border-slate-300 dark:hover:border-slate-800 transition">
-            <div 
-              onClick={() => {
-                handleOpenRuxtChat();
-                setExpandedAgentHistories(prev => ({ ...prev, ruxt: !prev.ruxt }));
-              }}
-              className={`p-3 rounded-2xl border transition shadow-xs group cursor-pointer ${
-                activeTab === 'chat' && activeSession?.agent_id === 'ruxt'
-                  ? 'bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-amber-500/5 dark:from-indigo-950/70 dark:to-slate-900 border-amber-400 dark:border-indigo-400 ring-2 ring-amber-400/30 dark:ring-indigo-500/30 shadow-md shadow-amber-500/10'
-                  : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-amber-400/60 dark:hover:border-indigo-400/60'
-              }`}
-              title="Chat with RuXt (Team Leader)"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                  <div className="relative shrink-0">
-                    <img 
-                      src={ruxtLeader.avatar || getAgentAvatar('ruxt')} 
-                      alt="RuXt Leader" 
-                      className="w-9 h-9 rounded-xl object-cover ring-2 ring-amber-400/80 dark:ring-indigo-500/40 bg-slate-100 dark:bg-slate-800"
-                      onError={(e) => { e.target.src = getAgentAvatar('ruxt'); }}
-                    />
-                    <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-amber-500 text-[9px] flex items-center justify-center text-slate-950 font-bold shadow-xs" title="Team Leader">
-                      👑
-                    </span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1">
-                      <span className="font-bold text-slate-900 dark:text-white text-xs group-hover:text-amber-600 dark:group-hover:text-indigo-300 transition truncate">{ruxtLeader.name}</span>
-                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300 font-semibold border border-amber-500/30">LEADER</span>
-                    </div>
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate mt-0.5">{ruxtLeader.role}</p>
-                  </div>
-                </div>
+      <aside className={`${isSidebarCollapsed ? 'w-16' : 'w-64 sm:w-68'} border-r backdrop-blur flex flex-col justify-between transition-all duration-300 select-none shrink-0`} style={{ backgroundColor: 'var(--theme-sidebar)', borderColor: 'var(--theme-border)' }}>
+        {isSidebarCollapsed ? (
+          /* Minimized Sidebar View (Dock Mode) */
+          <div className="p-2 flex-1 overflow-y-auto space-y-3.5 flex flex-col items-center">
 
-                <div className="flex items-center gap-1 shrink-0">
-                  {ruxtSessions.length > 0 && (
-                    <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-100 dark:bg-slate-800/80 text-amber-800 dark:text-amber-300 font-mono font-bold border border-amber-200 dark:border-slate-700">
-                      {ruxtSessions.length}
-                    </span>
-                  )}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleCreateSession('ruxt', 'RuXt Leader Orchestration');
-                      setExpandedAgentHistories(prev => ({ ...prev, ruxt: true }));
-                    }}
-                    className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-800 rounded transition"
-                    title="Start fresh thread with RuXt (+)"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                  </button>
-                  <div className="text-slate-400 dark:text-slate-500 group-hover:text-slate-700 dark:group-hover:text-slate-300">
-                    {expandedAgentHistories.ruxt !== false ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                  </div>
-                </div>
-              </div>
+
+            {/* Agents Icon */}
+            <div className="flex flex-col items-center space-y-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('agents');
+                  setSelectedAgentUi(null);
+                  setIsSidebarCollapsed(false);
+                }}
+                className={`w-8 h-8 rounded-lg flex items-center justify-center relative cursor-pointer transition ${
+                  activeTab === 'agents' && !selectedAgentUi
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                    : 'bg-indigo-500/10 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/20'
+                }`}
+                title={`Home (${allSidebarAgents.length})`}
+              >
+                <Home className="w-4 h-4" />
+                <span className="absolute -top-1 -right-1 px-1 min-w-[12px] h-3 rounded-full bg-indigo-600 text-[8px] text-white font-bold flex items-center justify-center">
+                  {allSidebarAgents.length}
+                </span>
+              </button>
+
+              {/* Add Agent Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  setAgentToEdit(null);
+                  setIsAgentStudioOpen(true);
+                }}
+                className="w-7 h-7 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-slate-400 hover:text-indigo-400 hover:border-indigo-400 flex items-center justify-center transition cursor-pointer"
+                title="Build New Agent (Studio)"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
             </div>
 
-            {/* RuXt Leader Chat History List directly under Leader */}
-            {expandedAgentHistories.ruxt !== false && ruxtSessions.length > 0 && (
-              <div className="pl-3.5 pr-1 py-1 space-y-0.5 border-l-2 border-amber-500/50 ml-4 my-1 rounded-r-xl bg-amber-50/50 dark:bg-slate-950/40 animate-in fade-in duration-150">
-                {ruxtSessions.map(sess => {
-                  const isSessActive = activeSession?.id === sess.id && activeTab === 'chat';
-                  return (
-                    <div
-                      key={sess.id}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleSelectSession(sess);
-                        setActiveTab('chat');
-                        setSelectedAgentUi(null);
-                      }}
-                      className={`group flex items-center justify-between px-2 py-1 rounded-lg text-xs cursor-pointer transition ${
-                        isSessActive
-                          ? 'bg-amber-500/20 text-amber-900 dark:text-amber-200 border border-amber-500/30 font-medium shadow-xs'
-                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-amber-100/40 dark:hover:bg-slate-800/50'
-                      }`}
-                      title={sess.title}
-                    >
-                      <div className="flex items-center gap-1.5 min-w-0 flex-1 pr-1">
-                        <MessageSquare className="w-2.5 h-2.5 text-amber-500 shrink-0 opacity-80" />
-                        <span className="truncate text-[10px] leading-tight">{sess.title}</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteSession(sess.id, e);
-                        }}
-                        className="opacity-0 group-hover:opacity-100 p-0.5 text-slate-400 hover:text-rose-500 transition shrink-0"
-                        title="Delete thread"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+            <div className="w-8 h-px bg-slate-200 dark:bg-slate-800/80" />
+
+            {/* Navigation Icons */}
+            <div className="flex flex-col items-center space-y-2.5">
+              {/* My Teams */}
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('teams');
+                  setSelectedAgentUi(null);
+                }}
+                className={`w-9 h-9 rounded-xl flex items-center justify-center transition relative cursor-pointer ${
+                  activeTab === 'teams' && !selectedAgentUi
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+                title={`My Teams (${customTeams.length})`}
+              >
+                <Users className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
+                <span className="absolute -top-1 -right-1 px-1 min-w-[12px] h-3.5 rounded-full bg-slate-200 dark:bg-slate-700 text-[8px] text-slate-700 dark:text-slate-300 font-mono font-bold flex items-center justify-center">
+                  {customTeams.length}
+                </span>
+              </button>
+
+              {/* Orchestrated Tasks */}
+              <button
+                type="button"
+                onClick={() => { setActiveTab('tasks'); setSelectedAgentUi(null); }}
+                className={`w-9 h-9 rounded-xl flex items-center justify-center transition relative cursor-pointer ${
+                  activeTab === 'tasks' && !selectedAgentUi
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+                title={`Orchestrated Tasks (${tasks.filter(t => t.status !== 'done').length} pending)`}
+              >
+                <CheckSquare className="w-4 h-4" />
+                <span className="absolute -top-1 -right-1 px-1 min-w-[12px] h-3.5 rounded-full bg-indigo-500/20 text-indigo-600 dark:text-indigo-300 border border-indigo-500/30 text-[8px] font-bold flex items-center justify-center">
+                  {tasks.filter(t => t.status !== 'done').length}
+                </span>
+              </button>
+
+              {/* Marketplace */}
+              <button
+                type="button"
+                onClick={() => { setActiveTab('marketplace'); setSelectedAgentUi(null); }}
+                className={`w-9 h-9 rounded-xl flex items-center justify-center transition relative cursor-pointer ${
+                  activeTab === 'marketplace' && !selectedAgentUi
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-pink-500 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+                title={`Marketplace (${marketplaceAgents.length})`}
+              >
+                <ShoppingBag className="w-4 h-4 text-pink-500" />
+                <span className="absolute -top-1 -right-1 px-1 min-w-[12px] h-3.5 rounded-full bg-pink-500/20 text-pink-600 dark:text-pink-300 border border-pink-500/30 text-[8px] font-bold flex items-center justify-center">
+                  {marketplaceAgents.length}
+                </span>
+              </button>
+
+              {/* Board Room */}
+              <button
+                type="button"
+                onClick={() => setIsBoardRoomOpen(prev => !prev)}
+                className={`w-9 h-9 rounded-xl flex items-center justify-center transition relative cursor-pointer ${
+                  isBoardRoomOpen
+                    ? 'bg-amber-500/20 text-amber-500 border border-amber-500/40 shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-amber-500 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+                title="Board Room (LIVE)"
+              >
+                <Users className="w-4 h-4 text-amber-500 dark:text-amber-400" />
+                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 animate-pulse border border-slate-900" />
+              </button>
+            </div>
           </div>
+        ) : (
+          <div className="p-3.5 flex-1 overflow-y-auto space-y-3">
+            {/* Top Header with Minimize Button */}
+            <div className="flex items-center justify-end px-1 pb-1">
+              <button
+                type="button"
+                onClick={() => setIsSidebarCollapsed(true)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                title="Minimize Sidebar"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+            </div>
 
-          {/* Navigation Links */}
-          <nav className="space-y-1">
-            <button
-              onClick={() => {
-                setActiveTab('chat');
-                setSelectedAgentUi(null);
-                if (!activeSession) {
-                  if (sessions.length > 0) {
-                    setActiveSession(sessions[0]);
-                  } else {
-                    handleOpenRuxtChat();
-                  }
-                }
-              }}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all ${
-                activeTab === 'chat' && !selectedAgentUi
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
-              }`}
-            >
-              <MessageSquare className="w-4 h-4" />
-              Team Chat & Dispatch
-            </button>
+            {/* Navigation Links */}
+            <nav className="space-y-1">
+            {/* Agents Navigation Item (Clean - Fleet View) */}
+            <div className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all group ${
+              activeTab === 'agents' && !selectedAgentUi
+                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
+            }`}>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('agents');
+                  setSelectedAgentUi(null);
+                }}
+                className="flex items-center gap-3 flex-1 text-left cursor-pointer min-w-0"
+                title="Home"
+              >
+                <Home className={`w-4 h-4 shrink-0 ${activeTab === 'agents' && !selectedAgentUi ? 'text-white' : 'text-indigo-500 dark:text-indigo-400'}`} />
+                <span className="font-semibold truncate">Home</span>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold shrink-0 ${
+                  activeTab === 'agents' && !selectedAgentUi
+                    ? 'bg-indigo-800/90 text-white'
+                    : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-400'
+                }`}>
+                  {allSidebarAgents.length}
+                </span>
+              </button>
 
-            {/* Collapsible Agents Section (5 specialist agents default, with View More / Less) */}
-            <div className="pt-1.5 pb-1">
-              <div className="w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/50 transition group">
-                <button
-                  type="button"
-                  onClick={() => setIsAgentsOpen(!isAgentsOpen)}
-                  className="flex items-center gap-2 flex-1 text-left"
-                >
-                  <Bot className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
-                  <span className="font-bold text-slate-700 dark:text-slate-300">Agents</span>
-                  <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-400 font-mono font-bold">
-                    {specialistAgents.length}
-                  </span>
-                  <span className="text-slate-400 dark:text-slate-500 group-hover:text-slate-700 dark:group-hover:text-slate-300 ml-auto mr-1">
-                    {isAgentsOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setAgentToEdit(null);
-                    setIsAgentStudioOpen(true);
-                  }}
-                  className="p-1 rounded-md text-slate-400 hover:text-indigo-600 dark:hover:text-white hover:bg-indigo-50 dark:hover:bg-indigo-600/30 transition"
-                  title="Build New Agent (Studio)"
-                >
-                  <Plus className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
-                </button>
-              </div>
-
-              {/* Collapsible List */}
-              {isAgentsOpen && (
-                <div className="mt-1 space-y-0.5 pl-2 animate-in fade-in duration-150">
-                  {displayedAgents.map((agent) => {
-                    const isCurrent = activeSession?.agent_id === agent.slug;
-                    const agentSessions = sessions.filter(s => s.agent_id === agent.slug);
-                    const isHistoryExpanded = expandedAgentHistories[agent.slug] !== false;
-
-                    return (
-                      <div key={agent.slug} className="rounded-xl overflow-hidden transition">
-                        {/* Agent Header Row */}
-                        <div
-                          onClick={() => {
-                            handleOpenAgentChat(agent.slug, `Chat with ${agent.name}`);
-                            setExpandedAgentHistories(prev => ({
-                              ...prev,
-                              [agent.slug]: true
-                            }));
-                          }}
-                          className={`group w-full flex items-center justify-between px-2 py-1.5 rounded-xl text-xs transition-all cursor-pointer ${
-                            isCurrent && activeTab === 'chat'
-                              ? 'bg-indigo-600/15 dark:bg-indigo-600/30 text-indigo-900 dark:text-white border border-indigo-400/40 dark:border-indigo-500/40 shadow-xs font-medium'
-                              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
-                          }`}
-                          title={`Click to chat with ${agent.name} (${agent.role})`}
-                        >
-                          <div className="flex items-center gap-2 min-w-0 flex-1">
-                            <div className="relative shrink-0">
-                              <img
-                                src={agent.avatar || getAgentAvatar(agent.slug)}
-                                alt={agent.name}
-                                className="w-5 h-5 rounded-md object-cover bg-slate-100 dark:bg-slate-800 ring-1 ring-slate-200 dark:ring-slate-700"
-                                onError={(e) => {
-                                  if (!e.currentTarget.src.includes('ruxt-logo.png')) {
-                                    e.currentTarget.src = '/ruxt-logo.png';
-                                  }
-                                }}
-                              />
-                            </div>
-                            <div className="min-w-0 flex-1 text-left">
-                              <div className="font-semibold text-slate-800 dark:text-white text-[11px] truncate flex items-center gap-1">
-                                <span>{agent.name}</span>
-                                {agent.uiEntry && (
-                                  <span className="text-[8px] px-1 py-0.2 rounded bg-pink-500/20 text-pink-600 dark:text-pink-300 font-bold border border-pink-500/30">
-                                    UI
-                                  </span>
-                                )}
-                              </div>
-                              <div className="text-[9px] text-slate-500 dark:text-slate-400 truncate leading-none">{agent.role}</div>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-1 shrink-0">
-                            {agentSessions.length > 0 && (
-                              <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-indigo-300 font-mono font-medium">
-                                {agentSessions.length}
-                              </span>
-                            )}
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleCreateSession(agent.slug, `Chat with ${agent.name}`);
-                                setExpandedAgentHistories(prev => ({ ...prev, [agent.slug]: true }));
-                              }}
-                              className="opacity-0 group-hover:opacity-100 p-0.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition"
-                              title={`Start fresh thread with ${agent.name} (+)`}
-                            >
-                              <Plus className="w-3 h-3" />
-                            </button>
-                            {agent.slug !== 'ruxt' && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleOpenEditAgent(agent);
-                                }}
-                                className="opacity-0 group-hover:opacity-100 p-0.5 text-slate-500 dark:text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition"
-                                title={`Skill Up & edit ${agent.name}`}
-                              >
-                                <Sparkles className="w-3 h-3 text-amber-500 dark:text-amber-400" />
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setExpandedAgentHistories(prev => ({ ...prev, [agent.slug]: !prev[agent.slug] }));
-                              }}
-                              className="p-0.5 text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition"
-                              title="Toggle chat history"
-                            >
-                              {isHistoryExpanded && agentSessions.length > 0 ? (
-                                <ChevronDown className="w-3 h-3" />
-                              ) : (
-                                <ChevronRight className="w-3 h-3" />
-                              )}
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Agent Chat History List directly under Agent */}
-                        {isHistoryExpanded && agentSessions.length > 0 && (
-                          <div className="pl-4 pr-1 py-1 space-y-0.5 border-l-2 border-indigo-400 dark:border-indigo-500/40 ml-4 my-0.5 rounded-r-xl bg-indigo-50/50 dark:bg-slate-950/40 animate-in fade-in duration-150">
-                            {agentSessions.map(sess => {
-                              const isSessActive = activeSession?.id === sess.id && activeTab === 'chat';
-                              return (
-                                <div
-                                  key={sess.id}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleSelectSession(sess);
-                                    setActiveTab('chat');
-                                    setSelectedAgentUi(null);
-                                  }}
-                                  className={`group flex items-center justify-between px-2 py-1 rounded-lg text-xs cursor-pointer transition ${
-                                    isSessActive
-                                      ? 'bg-indigo-500/20 text-indigo-900 dark:text-indigo-200 border border-indigo-500/30 font-medium'
-                                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-indigo-100/50 dark:hover:bg-slate-800/50'
-                                  }`}
-                                  title={sess.title}
-                                >
-                                  <div className="flex items-center gap-1.5 min-w-0 flex-1 pr-1">
-                                    <MessageSquare className="w-2.5 h-2.5 text-indigo-500 dark:text-indigo-400 shrink-0 opacity-80" />
-                                    <span className="truncate text-[10px] leading-tight">{sess.title}</span>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleDeleteSession(sess.id, e);
-                                    }}
-                                    className="opacity-0 group-hover:opacity-100 p-0.5 text-slate-400 hover:text-rose-500 transition shrink-0"
-                                    title="Delete thread"
-                                  >
-                                    <Trash2 className="w-3 h-3" />
-                                  </button>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-
-                  {/* View More / Less Button */}
-                  {specialistAgents.length > 5 && (
-                    <button
-                      onClick={() => setShowAllAgents(!showAllAgents)}
-                      className="w-full text-center py-1 text-[10px] font-semibold text-indigo-400 hover:text-indigo-300 transition"
-                    >
-                      {showAllAgents ? '▲ View Less' : `▼ View More (${specialistAgents.length - 5} more)`}
-                    </button>
-                  )}
-                </div>
-              )}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setAgentToEdit(null);
+                  setIsAgentStudioOpen(true);
+                }}
+                className={`p-1 rounded-md transition cursor-pointer shrink-0 ml-1 ${
+                  activeTab === 'agents' && !selectedAgentUi
+                    ? 'text-white hover:bg-indigo-700/60'
+                    : 'text-slate-400 hover:text-indigo-600 dark:hover:text-white hover:bg-indigo-50 dark:hover:bg-indigo-600/30'
+                }`}
+                title="Build New Agent (Studio)"
+              >
+                <Plus className={`w-3.5 h-3.5 ${activeTab === 'agents' && !selectedAgentUi ? 'text-white' : 'text-indigo-500 dark:text-indigo-400'}`} />
+              </button>
             </div>
 
             {/* MY TEAMS Section with '+' Button in front */}
             <div className="pt-1.5 pb-1">
-              <div className="flex items-center justify-between px-3 py-1.5">
+              <div 
+                onClick={() => {
+                  setActiveTab('teams');
+                  setSelectedAgentUi(null);
+                }}
+                className={`flex items-center justify-between px-3 py-1.5 rounded-xl cursor-pointer transition ${
+                  activeTab === 'teams' && !selectedAgentUi
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'hover:bg-slate-100 dark:hover:bg-slate-800/50 text-slate-700 dark:text-slate-300'
+                }`}
+                title="View All Teams"
+              >
                 <div className="flex items-center gap-2">
-                  <Users className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
-                  <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  <Users className={`w-3.5 h-3.5 ${activeTab === 'teams' && !selectedAgentUi ? 'text-white' : 'text-indigo-500 dark:text-indigo-400'}`} />
+                  <span className={`text-[11px] font-bold uppercase tracking-wider ${activeTab === 'teams' && !selectedAgentUi ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`}>
                     MY TEAMS ({customTeams.length})
                   </span>
                 </div>
@@ -2318,7 +2607,11 @@ export default function App() {
                     setIsCreateTeamOpen(true);
                   }}
                   title="Create New Team (+)"
-                  className="w-6 h-6 rounded-lg bg-slate-100 dark:bg-slate-800/80 hover:bg-indigo-600 hover:text-white text-slate-600 dark:text-slate-300 flex items-center justify-center transition border border-slate-200 dark:border-slate-700/80 hover:border-indigo-500 shadow-xs"
+                  className={`w-6 h-6 rounded-lg flex items-center justify-center transition border shadow-xs ${
+                    activeTab === 'teams' && !selectedAgentUi
+                      ? 'bg-indigo-700 hover:bg-indigo-800 text-white border-indigo-500'
+                      : 'bg-slate-100 dark:bg-slate-800/80 hover:bg-indigo-600 hover:text-white text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700/80 hover:border-indigo-500'
+                  }`}
                 >
                   <Plus className="w-3.5 h-3.5" />
                 </button>
@@ -2326,15 +2619,7 @@ export default function App() {
 
               {/* Teams List */}
               <div className="space-y-1 pl-1 mt-1">
-                {customTeams.length === 0 ? (
-                  <div
-                    onClick={() => setIsCreateTeamOpen(true)}
-                    className="px-2.5 py-2 rounded-xl border border-dashed border-slate-300 dark:border-slate-800 hover:border-indigo-500/50 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 text-[11px] text-center cursor-pointer transition"
-                  >
-                    + Click to create your first team
-                  </div>
-                ) : (
-                  customTeams.map(team => {
+                {customTeams.map(team => {
                     const isExpanded = !!expandedTeams[team.id];
                     const teamSpecialists = (team.agentSlugs || []).filter(s => s !== 'ruxt');
                     return (
@@ -2432,7 +2717,7 @@ export default function App() {
                       </div>
                     );
                   })
-                )}
+                }
               </div>
             </div>
 
@@ -2448,6 +2733,23 @@ export default function App() {
               Orchestrated Tasks
               <span className="ml-auto text-[10px] px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono">
                 {tasks.filter(t => t.status !== 'done').length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => { setActiveTab('marketplace'); setSelectedAgentUi(null); }}
+              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                activeTab === 'marketplace' && !selectedAgentUi
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
+              }`}
+            >
+              <span className="flex items-center gap-3">
+                <ShoppingBag className="w-4 h-4 text-pink-500" />
+                Marketplace (Talent Hub)
+              </span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono">
+                {marketplaceAgents.length}
               </span>
             </button>
 
@@ -2470,54 +2772,37 @@ export default function App() {
             </button>
           </nav>
         </div>
+        )}
 
-        {/* Bottom Actions: Talent Hub + Theme Switcher + Workspace Settings */}
-        <div className="p-3 border-t border-slate-200 dark:border-slate-800/60 space-y-1.5">
-          <button
-            onClick={() => { setActiveTab('marketplace'); setSelectedAgentUi(null); }}
-            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all ${
-              activeTab === 'marketplace' && !selectedAgentUi
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-transparent hover:border-slate-300 dark:hover:border-slate-700/80'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <ShoppingBag className="w-4 h-4 text-pink-500 dark:text-pink-400" />
-              Talent Hub (Market)
-            </span>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-600 dark:text-pink-300 font-bold border border-pink-500/30">
-              NEW
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={toggleLightDarkTheme}
-            className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-all border border-slate-200 dark:border-slate-800/80 shadow-xs cursor-pointer"
-            title="Toggle between Clean Light and Focus Dark theme"
-          >
-            <span className="flex items-center gap-2.5">
-              {isLightMode ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-indigo-400" />}
-              <span>{isLightMode ? 'Clean Light Theme' : 'Focus Dark Theme'}</span>
-            </span>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono font-medium">
-              {isLightMode ? '☀️ Light' : '🌙 Dark'}
-            </span>
-          </button>
-
-          <button
-            onClick={() => openSettings('overview')}
-            className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-all border border-slate-200 dark:border-transparent hover:border-slate-300 dark:hover:border-slate-700/80 shadow-xs"
-          >
-            <span className="flex items-center gap-2.5">
-              <Settings className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
-              Workspace Settings
-            </span>
-            <span className="text-[9px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-600 dark:text-indigo-300 font-bold border border-indigo-500/30">
-              PRO
-            </span>
-          </button>
-        </div>
+        {/* Bottom Actions: Workspace Settings */}
+        {isSidebarCollapsed ? (
+          <div className="p-2 border-t border-slate-200 dark:border-slate-800/60 flex flex-col items-center">
+            <button
+              type="button"
+              onClick={() => openSettings('overview')}
+              className="w-10 h-10 rounded-xl flex items-center justify-center text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition relative cursor-pointer group"
+              title="Workspace Settings (PRO)"
+            >
+              <Settings className="w-4 h-4 text-indigo-500 dark:text-indigo-400 group-hover:rotate-45 transition-transform" />
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-indigo-500" />
+            </button>
+          </div>
+        ) : (
+          <div className="p-3 border-t border-slate-200 dark:border-slate-800/60">
+            <button
+              onClick={() => openSettings('overview')}
+              className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-all border border-slate-200 dark:border-transparent hover:border-slate-300 dark:hover:border-slate-700/80 shadow-xs"
+            >
+              <span className="flex items-center gap-2.5">
+                <Settings className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
+                Workspace Settings
+              </span>
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-600 dark:text-indigo-300 font-bold border border-indigo-500/30">
+                PRO
+              </span>
+            </button>
+          </div>
+        )}
       </aside>
 
       {/* Main Content Viewport */}
@@ -2537,6 +2822,8 @@ export default function App() {
             handleTestConnection={handleTestConnection}
             initialCategory={settingsCategory}
             agents={agents}
+            ruxtLeader={ruxtLeader}
+            onEditAgent={handleOpenEditAgent}
             tasks={tasks}
             marketplaceAgents={marketplaceAgents}
             onCommandLeader={(prompt) => {
@@ -2555,6 +2842,16 @@ export default function App() {
             <div className="h-full flex flex-col bg-slate-900 rounded-2xl overflow-hidden border border-slate-800">
               <div className="flex items-center justify-between px-4 py-2.5 bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border-b border-slate-800 text-xs text-slate-300">
                 <div className="flex items-center gap-2.5 min-w-0">
+                  {isSidebarCollapsed && (
+                    <button
+                      type="button"
+                      onClick={() => setIsSidebarCollapsed(false)}
+                      className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer mr-0.5 shrink-0"
+                      title="Expand Sidebar"
+                    >
+                      <ChevronRight className="w-3.5 h-3.5 text-indigo-400" />
+                    </button>
+                  )}
                   <div className="w-6 h-6 rounded-lg bg-pink-500/20 border border-pink-500/40 flex items-center justify-center text-pink-400">
                     <Laptop className="w-3.5 h-3.5" />
                   </div>
@@ -2577,8 +2874,20 @@ export default function App() {
                     <RefreshCw className="w-3.5 h-3.5" />
                   </button>
                   <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedAgentUi(null);
+                      setChatCanvasSplit(true);
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                    title="Dock Canvas Side-by-Side with Chat"
+                  >
+                    <Columns className="w-3.5 h-3.5 text-pink-400" />
+                    <span>Split View</span>
+                  </button>
+                  <button
                     onClick={() => setSelectedAgentUi(null)}
-                    className="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition text-xs shadow-sm shadow-indigo-600/30"
+                    className="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition text-xs shadow-sm shadow-indigo-600/30 cursor-pointer"
                   >
                     ← Back to Chat
                   </button>
@@ -2983,396 +3292,735 @@ export default function App() {
           </div>
         </div>
           ) : activeTab === 'agents' ? (
-            /* Agents Studio View */
-            <div className="space-y-6 max-w-6xl mx-auto">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-xl font-bold text-white">Active Specialist Team</h3>
-                  <p className="text-xs text-slate-400">Managed and orchestrated by RuXt Local Engine.</p>
-            </div>
-                <div className="flex items-center gap-2">
+            /* Autonomous Agent Fleet - Modern 5-Column Grid View */
+            <div className="space-y-6 max-w-[1700px] mx-auto w-full">
+              {/* Fleet Header */}
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800/80">
+                <div className="flex items-center gap-3">
+                  {isSidebarCollapsed && (
+                    <button
+                      type="button"
+                      onClick={() => setIsSidebarCollapsed(false)}
+                      className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-900 hover:bg-indigo-600 hover:text-white text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 transition flex items-center justify-center shadow-xs cursor-pointer shrink-0 group"
+                      title="Expand Sidebar"
+                    >
+                      <ChevronRight className="w-4 h-4 text-slate-600 dark:text-slate-400 group-hover:text-white transition" />
+                    </button>
+                  )}
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-600/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0 shadow-sm">
+                    <Bot className="w-6 h-6 text-indigo-400" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <h3 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Autonomous Agent Fleet</h3>
+                      <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 font-mono font-bold border border-indigo-500/30">
+                        {allSidebarAgents.length} Agents Available
+                      </span>
+                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 font-medium border border-emerald-500/20 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        Engine Online
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Select any specialist to launch an instant chat session, calibrate personas in Studio, or inspect custom UI canvases.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
                   <button
                     onClick={fetchAllData}
-                    className="px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 text-xs font-semibold transition flex items-center gap-1.5"
+                    className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-slate-800 text-xs font-semibold transition flex items-center gap-2 shadow-xs cursor-pointer"
                     title="Refresh Agent Team"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
-                    Scan & Refresh
+                    <span>Scan & Refresh</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setAgentToEdit(null);
+                      setIsAgentStudioOpen(true);
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer"
+                    title="Build New Custom Agent in Studio"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Create Agent</span>
                   </button>
                   <button
                     onClick={() => setActiveTab('marketplace')}
-                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md shadow-indigo-600/30 transition flex items-center gap-1.5"
+                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md shadow-indigo-600/30 transition flex items-center gap-1.5 cursor-pointer"
                   >
                     <ShoppingBag className="w-3.5 h-3.5" />
-                    Hire New Specialist
+                    <span>Talent Marketplace</span>
                   </button>
-            </div>
-          </div>
+                </div>
+              </div>
 
-              {agents.length === 0 ? (
+              {/* Search & Category Filter Bar */}
+              <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+                {/* Search Input */}
+                <div className="relative flex-1 max-w-md">
+                  <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={agentFleetSearch}
+                    onChange={(e) => setAgentFleetSearch(e.target.value)}
+                    placeholder="Search specialists by name, role, skills or description..."
+                    className="w-full pl-9 pr-9 py-2 rounded-xl bg-slate-100 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-xs focus:outline-none focus:border-indigo-500 transition"
+                  />
+                  {agentFleetSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setAgentFleetSearch('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-white"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Category Pills */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
+                  {fleetCategories.map((category) => {
+                    const isSelected = agentFleetFilter === category;
+                    const label = category === 'all' ? 'All Roles' : category;
+                    return (
+                      <button
+                        key={category}
+                        type="button"
+                        onClick={() => setAgentFleetFilter(category)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
+                          isSelected
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 3-Column Agents Grid */}
+              {filteredFleetAgents.length === 0 ? (
                 <div className="p-12 text-center rounded-3xl bg-slate-900/40 border border-slate-800/80 flex flex-col items-center justify-center space-y-4">
                   <div className="w-14 h-14 rounded-2xl bg-indigo-950/60 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
                     <Users className="w-7 h-7" />
-              </div>
+                  </div>
                   <div>
-                    <h4 className="text-base font-bold text-white">No Specialists Detected Yet</h4>
+                    <h4 className="text-base font-bold text-white">No Specialists Found</h4>
                     <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
-                      Connecting to RuXt Local Engine... Ensure the backend engine is running on port 1234, or click below to scan installed agents.
+                      {agentFleetSearch
+                        ? `No agent matched your search "${agentFleetSearch}". Try clearing your filters.`
+                        : 'No specialist agents available matching the selected category.'}
                     </p>
-              </div>
+                  </div>
                   <div className="flex items-center gap-3 pt-2">
                     <button
-                      onClick={fetchAllData}
-                      className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition flex items-center gap-2 shadow-md shadow-indigo-600/20"
+                      onClick={() => {
+                        setAgentFleetSearch('');
+                        setAgentFleetFilter('all');
+                      }}
+                      className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition shadow-md shadow-indigo-600/20"
                     >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      Scan Local Workspace
+                      Reset Filters
                     </button>
                     <button
                       onClick={() => setActiveTab('marketplace')}
-                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition flex items-center gap-1.5 border border-slate-700/60"
+                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition border border-slate-700/60"
                     >
-                      <ShoppingBag className="w-3.5 h-3.5" />
-                      Browse Talent Hub
+                      Browse Talent Marketplace
                     </button>
-              </div>
-            </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {agents.map((agent) => (
-                    <div
-                      key={agent.slug}
-                      className={`p-5 rounded-3xl bg-slate-900/70 border flex flex-col justify-between transition shadow-lg ${
-                        agent.slug === 'ruxt' ? 'border-amber-500/40 bg-gradient-to-b from-indigo-950/40 to-slate-900 ring-1 ring-amber-500/20' : 'border-slate-800 hover:border-indigo-500/50'
-                      }`}
-                    >
-                      <div>
-                        <div className="flex items-center gap-3.5 mb-4">
-                          <div className="relative">
-                            <img
-                              src={agent.avatar}
-                              alt={agent.name}
-                              onError={(e) => { e.target.src = '/ruxt-logo.png'; }}
-                              className={`w-14 h-14 rounded-2xl object-cover bg-slate-800 ring-2 ${
-                                agent.slug === 'ruxt' ? 'ring-amber-400/80' : 'ring-indigo-500/30'
-                              }`}
-                            />
-                            {agent.slug === 'ruxt' && (
-                              <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-amber-500 text-slate-950 text-xs flex items-center justify-center font-bold shadow">
-                                👑
-                              </span>
-                            )}
-                      </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <h4 className="font-bold text-white text-base truncate">{agent.name}</h4>
-                              {agent.slug === 'ruxt' && (
-                                <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">LEADER</span>
-                              )}
-                        </div>
-                            <p className="text-xs font-semibold text-indigo-400 truncate">{agent.role}</p>
-                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-mono inline-block mt-1">
-                              v{agent.version}
-                            </span>
-                      </div>
-                    </div>
-
-                        <p className="text-xs text-slate-300 leading-relaxed mb-4">{agent.description}</p>
-                  </div>
-
-                      <div className="pt-4 border-t border-slate-800/80 flex items-center gap-2">
-                        <button
-                          onClick={() => handleCreateSession(agent.slug, `Chat with ${agent.name}`)}
-                          className="flex-1 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition"
-                        >
-                          {agent.slug === 'ruxt' ? 'Command Leader' : 'Start Session'}
-                        </button>
-                        {agent.uiEntry && (
-                          <button
-                            onClick={() => setSelectedAgentUi(agent)}
-                            className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition flex items-center gap-1.5"
-                          >
-                            <ExternalLink className="w-3.5 h-3.5" />
-                            UI
-                          </button>
-                        )}
-                        {agent.slug !== 'ruxt' && (
-                          <button
-                            onClick={() => handleUninstallAgent(agent.slug)}
-                            title="Dismiss agent"
-                            className="p-2 rounded-xl bg-slate-800/60 hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 transition"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
                   </div>
                 </div>
-                  ))}
-            </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-3.5">
+                  {filteredFleetAgents.map((agent) => {
+                    const isLeader = agent.slug === 'ruxt' || agent.isLeader;
+                    return (
+                      <FleetAgentCard
+                        key={agent.slug}
+                        agent={agent}
+                        isLeader={isLeader}
+                        onOpenChat={() => {
+                          if (isLeader) {
+                            handleOpenRuxtChat();
+                          } else {
+                            handleOpenAgentChat(agent.slug, `Chat with ${agent.name}`);
+                          }
+                        }}
+                        onOpenUi={() => setSelectedAgentUi(agent)}
+                        onEdit={() => {
+                          setAgentToEdit(agent);
+                          setIsAgentStudioOpen(true);
+                        }}
+                        onUninstall={() => handleUninstallAgent(agent.slug)}
+                      />
+                    );
+                  })}
+                </div>
               )}
-        </div>
+            </div>
+          ) : activeTab === 'teams' ? (
+            /* Specialist Teams & Squads View */
+            <div className="space-y-6 max-w-7xl mx-auto w-full">
+              {/* Header */}
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800/80">
+                <div className="flex items-center gap-3">
+                  {isSidebarCollapsed && (
+                    <button
+                      type="button"
+                      onClick={() => setIsSidebarCollapsed(false)}
+                      className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-900 hover:bg-indigo-600 hover:text-white text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 transition flex items-center justify-center shadow-xs cursor-pointer shrink-0 group"
+                      title="Expand Sidebar"
+                    >
+                      <ChevronRight className="w-4 h-4 text-slate-600 dark:text-slate-400 group-hover:text-white transition" />
+                    </button>
+                  )}
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-600/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0 shadow-sm">
+                    <Users className="w-6 h-6 text-indigo-400" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <h3 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Specialist Teams & Squads</h3>
+                      <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 font-mono font-bold border border-indigo-500/30">
+                        {customTeams.length} Squads Active
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Orchestrate multi-specialist squads led by RuXt to collaborate across strategy, coding, design, and operations.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setIsCreateTeamOpen(true)}
+                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md shadow-indigo-600/30 transition flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Create Squad</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab('agents');
+                      setSelectedAgentUi(null);
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 text-xs font-semibold transition flex items-center gap-2 cursor-pointer"
+                  >
+                    <Home className="w-3.5 h-3.5" />
+                    <span>View All Agents</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Teams Grid */}
+              {customTeams.length === 0 ? (
+                <div className="p-12 text-center rounded-3xl bg-slate-100/60 dark:bg-slate-900/40 border border-dashed border-slate-300 dark:border-slate-800 flex flex-col items-center justify-center space-y-4">
+                  <div className="w-14 h-14 rounded-2xl bg-indigo-500/10 dark:bg-indigo-950/60 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+                    <Users className="w-7 h-7" />
+                  </div>
+                  <div>
+                    <h4 className="text-base font-bold text-slate-900 dark:text-white">No Custom Teams Created Yet</h4>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
+                      Build your first multi-agent squad to delegate complex goals across multiple specialist personas seamlessly.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsCreateTeamOpen(true)}
+                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md shadow-indigo-600/20 transition flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Create Your First Squad</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {customTeams.map(team => {
+                    const teamSpecialists = (team.agentSlugs || []).filter(s => s !== 'ruxt');
+                    return (
+                      <div
+                        key={team.id}
+                        className="rounded-2xl bg-white dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800/80 p-5 shadow-xs flex flex-col justify-between hover:border-indigo-500/50 hover:shadow-md transition group"
+                      >
+                        <div>
+                          {/* Card Header */}
+                          <div className="flex items-start justify-between gap-3 mb-2.5">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="w-9 h-9 rounded-xl bg-indigo-500/10 dark:bg-indigo-900/30 border border-indigo-500/30 flex items-center justify-center text-indigo-500 dark:text-indigo-400 shrink-0">
+                                <Users className="w-4 h-4" />
+                              </div>
+                              <div className="min-w-0">
+                                <h4 className="font-bold text-slate-900 dark:text-white text-sm truncate">
+                                  {team.title}
+                                </h4>
+                                <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">
+                                  {teamSpecialists.length} Specialists + RuXt Lead
+                                </span>
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={(e) => promptDeleteTeam(team, e)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition cursor-pointer"
+                              title="Delete squad"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+
+                          {/* Description */}
+                          {team.description && (
+                            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed line-clamp-2 mb-4">
+                              {team.description}
+                            </p>
+                          )}
+
+                          {/* Member Agents Pill List */}
+                          <div className="space-y-2 mb-4">
+                            <span className="text-[10px] font-mono font-medium text-slate-400 uppercase tracking-wider block">
+                              Squad Members
+                            </span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {/* RuXt Leader Pill */}
+                              <div className="flex items-center gap-1.5 pl-1.5 pr-2 py-0.5 rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 text-[11px] font-medium">
+                                <img
+                                  src={getAgentAvatar('ruxt')}
+                                  alt="RuXt"
+                                  className="w-4 h-4 rounded-full object-cover"
+                                />
+                                <span>RuXt (Lead)</span>
+                              </div>
+
+                              {/* Specialist Pills */}
+                              {teamSpecialists.map(slug => {
+                                const ag = specialistAgents.find(a => a.slug === slug) || { slug, name: slug, role: 'Specialist' };
+                                return (
+                                  <div
+                                    key={slug}
+                                    className="flex items-center gap-1.5 pl-1.5 pr-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 text-[11px] font-medium"
+                                  >
+                                    <img
+                                      src={ag.avatar || getAgentAvatar(slug)}
+                                      alt={ag.name}
+                                      className="w-4 h-4 rounded-full object-cover"
+                                      onError={(e) => { e.target.src = getAgentAvatar(slug); }}
+                                    />
+                                    <span className="max-w-[110px] truncate">{ag.name}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Bottom Action */}
+                        <div className="pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleStartTeamChat(team)}
+                            className="flex-1 px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-xs transition flex items-center justify-center gap-2 cursor-pointer"
+                            title="Dispatch Squad Chat"
+                          >
+                            <MessageSquare className="w-3.5 h-3.5" />
+                            <span>Dispatch Squad Chat</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           ) : activeTab === 'chat' ? (
             /* AI Chat View (Full Canvas - Clean & Borderless) */
             <div className="h-full w-full flex-1 flex flex-row min-h-0 overflow-hidden bg-transparent">
-              {/* Main Chat Column */}
-              <div className="h-full flex-1 flex flex-col min-h-0 overflow-hidden bg-transparent">
-                {/* Chat Top Identity Header (Polished Glass Backdrop) */}
-              <div 
-                className="px-6 py-3 flex items-center justify-between shrink-0 backdrop-blur-md border-b transition-colors"
-                style={{ backgroundColor: 'var(--theme-header)', borderColor: 'var(--theme-border)' }}
-              >
-                  <div className="flex items-center gap-3">
-                    {currentChatAgent ? (
-                      <>
-                        <div className="relative">
-                          <img
-                            src={currentChatAgent.avatar || getAgentAvatar(currentChatAgent.slug)}
-                            alt={currentChatAgent.name}
-                            onError={(e) => {
-                              if (!e.currentTarget.src.includes('ruxt-logo.png')) {
-                                e.currentTarget.src = '/ruxt-logo.png';
-                              }
-                            }}
-                            className={`w-8 h-8 rounded-xl object-cover bg-slate-100 dark:bg-slate-800 ring-2 ${
-                              currentChatAgent.slug === 'ruxt' ? 'ring-amber-400/80' : 'ring-indigo-500/40'
-                            }`}
-                          />
-                          {currentChatAgent.slug === 'ruxt' && (
-                            <span className="absolute -top-1 -right-1 text-[9px]">👑</span>
-                          )}
-                    </div>
-                        <div>
-                          <div className="font-bold text-slate-900 dark:text-white text-xs flex items-center gap-2">
-                            {currentChatAgent.name}
-                            {currentChatAgent.slug === 'ruxt' && (
-                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold border border-amber-500/30">LEADER</span>
-                            )}
-                            <span className="w-2 h-2 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse" />
+              {/* Integrated Chat History Drawer (Left Side of Chat Canvas) */}
+              {isChatHistoryOpen && (
+                <div className="w-72 sm:w-80 h-full flex flex-col min-h-0 border-r border-slate-200/90 dark:border-slate-800/90 bg-white dark:bg-slate-900/95 backdrop-blur-md shrink-0 animate-in slide-in-from-left duration-200 z-10 select-none">
+                  {/* Top Bar: Title & Toggle */}
+                  <div className="h-12 px-3.5 border-b border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between shrink-0">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                        <History className="w-3.5 h-3.5" />
                       </div>
-                          <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">
-                            {currentChatAgent.role}
-                          </span>
+                      <span className="text-xs font-bold text-slate-800 dark:text-white">Chat History</span>
+                      <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-mono font-medium">
+                        {sessions.length}
+                      </span>
                     </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-600/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
-                          <Bot className="w-4 h-4" />
-                    </div>
-                        <div>
-                          <div className="font-bold text-slate-900 dark:text-white text-xs">General Workspace Assistant</div>
-                          <span className="text-[10px] text-slate-500">Autonomous Model</span>
-                    </div>
-                      </>
-                    )}
-              </div>
-
-                  {/* Active Brain & New Chat in Chat Header */}
-                  <div className="flex items-center gap-2">
-                    {isDesktopRunning && (
-                      <button
-                        onClick={handleAbortActiveDesktop}
-                        className="px-3 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/35 text-red-600 dark:text-red-300 border border-red-500/50 text-[10px] font-bold flex items-center gap-1.5 transition shadow-lg shadow-red-500/20 animate-pulse cursor-pointer"
-                        title="Emergency Stop: Halt Vision Engine & Screen Control (ESC)"
-                      >
-                        <span className="w-2 h-2 rounded-full bg-red-500 dark:bg-red-400 animate-ping" />
-                        <span>⏹️ Stop Vision Engine</span>
-                        <kbd className="px-1 py-0.2 bg-red-100 dark:bg-red-950/80 rounded border border-red-500/40 text-[9px] font-mono">ESC</kbd>
-                      </button>
-                    )}
-                    <button
-                      onClick={() => setIsBoardRoomOpen(prev => !prev)}
-                      className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold flex items-center gap-1.5 transition shadow-xs ${
-                        isBoardRoomOpen
-                          ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40'
-                          : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
-                      }`}
-                      title="Open Executive Board Room Panel on the right"
-                    >
-                      <Users className="w-3 h-3 text-amber-500 dark:text-amber-400" />
-                      <span>Board Room</span>
-                      {boardroomTasks.length > 0 && (
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse" />
-                      )}
-                    </button>
-                    {currentChatAgent?.uiEntry && (
-                      <button
-                        onClick={() => setSelectedAgentUi(currentChatAgent)}
-                        className="px-2.5 py-1 rounded-lg bg-pink-500/20 hover:bg-pink-500/35 text-pink-700 dark:text-pink-300 border border-pink-500/40 text-[10px] font-bold flex items-center gap-1.5 transition shadow-xs animate-pulse cursor-pointer"
-                        title={`Open interactive UI for ${currentChatAgent.name}`}
-                      >
-                        <ExternalLink className="w-3 h-3 text-pink-500 dark:text-pink-400" />
-                        <span>Interactive UI</span>
-                      </button>
-                    )}
-                    <button
-                      onClick={() => handleCreateSession(activeSession?.agent_id || 'ruxt')}
-                      className="px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-600/20 hover:bg-indigo-100 dark:hover:bg-indigo-600/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/30 text-[10px] font-semibold flex items-center gap-1.5 transition shadow-xs"
-                      title="Start a fresh conversation thread with this specialist"
-                    >
-                      <Plus className="w-3 h-3" />
-                      <span>New Chat</span>
-                    </button>
-                    {currentChatAgent && currentChatAgent.slug !== 'ruxt' && (
-                      <button
-                        onClick={() => handleOpenEditAgent(currentChatAgent)}
-                        className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/30 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[10px] font-semibold flex items-center gap-1.5 transition shadow-xs cursor-pointer"
-                        title={`Skill Up & edit instructions for ${currentChatAgent.name}`}
-                      >
-                        <Sparkles className="w-3 h-3 text-amber-500 dark:text-amber-400" />
-                        <span>Skill Up</span>
-                      </button>
-                    )}
-                    <span 
-                      onClick={() => openSettings('models')}
-                      className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-indigo-500/10 hover:bg-slate-200 dark:hover:bg-indigo-500/25 text-slate-700 dark:text-indigo-300 border border-slate-200 dark:border-indigo-500/20 text-[10px] font-semibold flex items-center gap-1.5 cursor-pointer transition shadow-xs"
-                      title="Manage Active Brain in Settings"
-                    >
-                      <Zap className="w-3 h-3 text-amber-500 dark:text-amber-400" />
-                      {PROVIDER_NAMES[settings.active_provider] || 'Gemini'}
-                    </span>
-                    {/* Quick Light/Dark Switcher in Header */}
                     <button
                       type="button"
-                      onClick={toggleLightDarkTheme}
-                      className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 text-[10px] font-semibold flex items-center gap-1.5 transition shadow-xs cursor-pointer"
-                      title={isLightMode ? 'Switch to Focus Dark Theme' : 'Switch to Clean Light Theme'}
+                      onClick={() => setIsChatHistoryOpen(false)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                      title="Hide Chat History (Toggle)"
                     >
-                      {isLightMode ? <Sun className="w-3.5 h-3.5 text-amber-500" /> : <Moon className="w-3.5 h-3.5 text-indigo-400" />}
-                      <span className="hidden sm:inline font-mono">{isLightMode ? 'Light' : 'Dark'}</span>
+                      <PanelLeft className="w-3.5 h-3.5" />
                     </button>
-                    {activeSession?.title && (
-                      <span 
-                        className="text-[10px] text-slate-500 dark:text-slate-400 font-mono hidden md:inline max-w-[130px] lg:max-w-[160px] truncate bg-slate-100 dark:bg-slate-800/80 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700/80 shadow-xs"
-                        title={activeSession.title}
-                      >
-                        {activeSession.title}
-                      </span>
-                    )}
                   </div>
-            </div>
 
-                {/* Messages Box (Borderless & Centered Max-Width) */}
-                <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-4">
-                  <div className={`max-w-4xl mx-auto w-full ${messages.length === 0 ? 'h-full flex flex-col justify-center' : 'space-y-4'}`}>
-                    {messages.length === 0 ? (
-                      <div className="h-full flex flex-col items-center justify-center text-center px-4 max-w-xl mx-auto py-8 select-text">
-                      {/* Agent Avatar with ONLINE badge right at bottom matching reference */}
-                      <div className="relative mb-4">
-                        <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-3xl overflow-hidden ring-4 ring-slate-200 dark:ring-slate-800 shadow-xl bg-white dark:bg-slate-900 mx-auto">
-                          <img
-                            src={(currentChatAgent ? currentChatAgent.avatar : ruxtLeader.avatar) || getAgentAvatar(currentChatAgent ? currentChatAgent.slug : 'ruxt')}
-                            alt={currentChatAgent ? currentChatAgent.name : 'RuXt Assistant'}
-                            onError={(e) => {
-                              if (!e.currentTarget.src.includes('ruxt-logo.png')) {
-                                e.currentTarget.src = '/ruxt-logo.png';
-                              }
-                            }}
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                        {/* ONLINE badge right at bottom of avatar */}
-                        <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/90 text-emerald-600 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-500/50 text-[9px] font-extrabold tracking-wider uppercase shadow-xs flex items-center gap-1 shrink-0">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse" />
-                          ONLINE
-                        </div>
-                      </div>
+                  {/* Actions Row: + New Chat Button & Search Input */}
+                  <div className="p-3 border-b border-slate-100 dark:border-slate-800/60 space-y-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleStartNewSession(activeSession?.agent_id || 'ruxt')}
+                      className="w-full py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-sm shadow-indigo-600/20 transition cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                      <span>New Conversation</span>
+                    </button>
 
-                      {/* Agent Title & Persona Subtitle */}
-                      <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight mt-1">
-                        {currentChatAgent ? currentChatAgent.name : 'RuXt Assistant'}
-                      </h2>
-                      <p className="text-[11px] font-bold tracking-widest uppercase text-amber-600 dark:text-amber-500/90 mt-1.5 font-mono">
-                        {currentChatAgent 
-                          ? (currentChatAgent.slug === 'ruxt' ? 'PRIVATE AI CHIEF OF STAFF' : currentChatAgent.role.toUpperCase()) 
-                          : 'PRIVATE AI CHIEF OF STAFF'}
-                      </p>
-
-                      {/* Description / Quote Paragraph */}
-                      <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed max-w-lg mt-3.5 opacity-90 font-normal">
-                        &ldquo;{currentChatAgent 
-                          ? (currentChatAgent.description || 'Hello! I am your private AI partner and Chief of Staff. Ask me anything in any language. I can break down projects, delegate to specialist executives, track tasks, and optimize your business.')
-                          : 'Hello! I am your private AI partner and Chief of Staff. Ask me anything in any language. I can break down projects, delegate to specialist executives, track tasks, and optimize your business.'
-                        }&rdquo;
-                      </p>
-
-                      {/* Red-marked suggestion cards are excluded as requested */}
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                      <input
+                        type="text"
+                        value={chatHistorySearch}
+                        onChange={(e) => setChatHistorySearch(e.target.value)}
+                        placeholder="Search conversations..."
+                        className="w-full pl-8 pr-7 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 text-slate-800 dark:text-slate-200 placeholder-slate-400 text-xs focus:outline-none focus:border-indigo-500 transition"
+                      />
+                      {chatHistorySearch && (
+                        <button
+                          type="button"
+                          onClick={() => setChatHistorySearch('')}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      )}
                     </div>
-                  ) : (
-                    messages.map((m, mIdx) => {
-                      let meta = null;
-                      try {
-                        meta = m.metadata ? (typeof m.metadata === 'string' ? JSON.parse(m.metadata) : m.metadata) : null;
-                      } catch (_) {}
+                  </div>
 
-                      const isUser = m.role === 'user';
-                      const msgAgent = (activeSession?.agent_id && activeSession.agent_id !== 'ruxt')
-                        ? (allKnownAgents.find(a => a.slug === activeSession.agent_id) || currentChatAgent || ruxtLeader)
-                        : (currentChatAgent || ruxtLeader);
-                      const agentAvatar = msgAgent?.avatar || getAgentAvatar(msgAgent?.slug || 'ruxt');
-                      const agentName = msgAgent?.name || 'RuXt Assistant';
-                      const agentRole = msgAgent?.slug === 'ruxt' ? 'Chief of Staff' : (msgAgent?.role || 'Specialist');
-
-                      if (isUser) {
+                  {/* Scrollable Sessions List */}
+                  <div className="flex-1 overflow-y-auto p-2 space-y-3.5">
+                    {sessions.length === 0 ? (
+                      <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs">
+                        <MessageSquare className="w-6 h-6 mx-auto mb-2 opacity-40" />
+                        <p>No conversations yet</p>
+                        <p className="text-[10px] mt-1 opacity-70">Start chatting to build history</p>
+                      </div>
+                    ) : (
+                      Object.entries({
+                        'Today': groupedSessions.today,
+                        'Yesterday': groupedSessions.yesterday,
+                        'Previous 7 Days': groupedSessions.pastWeek,
+                        'Older': groupedSessions.older
+                      }).map(([groupTitle, groupItems]) => {
+                        if (!groupItems || groupItems.length === 0) return null;
                         return (
-                          <div
-                            key={m.id || mIdx}
-                            className="group flex flex-col items-end w-full animate-in fade-in duration-200"
-                          >
-                            <div className="flex items-center gap-2 mb-1 px-1 text-[10px] text-slate-400 dark:text-slate-500 font-mono">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  navigator.clipboard.writeText(m.content);
-                                  showNotification('Message copied to clipboard', 'success');
-                                }}
-                                className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-800 transition cursor-pointer"
-                                title="Copy message"
-                              >
-                                <Copy className="w-3 h-3" />
-                              </button>
-                              {m.created_at && (
-                                <span>{new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                              )}
-                              <span className="font-semibold text-slate-600 dark:text-slate-400">You</span>
+                          <div key={groupTitle} className="space-y-1">
+                            <div className="px-2 py-0.5 text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                              {groupTitle}
                             </div>
+                            <div className="space-y-0.5">
+                              {groupItems.map(sess => {
+                                const isActive = activeSession?.id === sess.id;
+                                const sessAgent = allKnownAgents.find(a => a.slug === sess.agent_id) || (sess.agent_id === 'ruxt' ? ruxtLeader : null);
+                                const avatarSrc = sessAgent?.avatar || getAgentAvatar(sess.agent_id || 'ruxt');
+                                const timeStr = sess.updated_at || sess.created_at
+                                  ? new Date(sess.updated_at || sess.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                  : '';
 
-                            <div className="max-w-[85%] rounded-2xl rounded-tr-sm px-4 sm:px-5 py-3 bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-600/20 text-[13px] leading-relaxed whitespace-pre-wrap select-text">
-                              {m.content}
+                                return (
+                                  <div
+                                    key={sess.id}
+                                    onClick={() => handleSelectSession(sess)}
+                                    className={`group relative flex items-center gap-2.5 px-2.5 py-2 rounded-xl cursor-pointer transition text-xs ${
+                                      isActive
+                                        ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-950 dark:text-white font-medium border border-indigo-200 dark:border-indigo-500/40 shadow-xs'
+                                        : 'hover:bg-slate-100 dark:hover:bg-slate-800/60 text-slate-700 dark:text-slate-300 border border-transparent'
+                                    }`}
+                                  >
+                                    <img
+                                      src={avatarSrc}
+                                      alt={sessAgent?.name || 'Agent'}
+                                      className="w-5 h-5 rounded-md object-cover ring-1 ring-slate-200 dark:ring-slate-700 shrink-0"
+                                      onError={(e) => { e.target.src = '/ruxt-logo.png'; }}
+                                    />
+                                    <div className="flex-1 min-w-0 pr-6">
+                                      <div className="truncate text-[11px] leading-tight font-medium">
+                                        {sess.title || 'Conversation'}
+                                      </div>
+                                      <div className="flex items-center gap-1.5 text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
+                                        {timeStr && <span>{timeStr}</span>}
+                                        {sess.message_count > 0 && (
+                                          <>
+                                            <span>•</span>
+                                            <span>{sess.message_count} msg{sess.message_count > 1 ? 's' : ''}</span>
+                                          </>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {/* Delete Session Button on Hover */}
+                                    <button
+                                      type="button"
+                                      onClick={(e) => handleDeleteSession(sess.id, e)}
+                                      className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition absolute right-1.5 top-1/2 -translate-y-1/2 cursor-pointer"
+                                      title="Delete conversation"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
                         );
-                      }
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+              {/* Main Chat Column */}
+              <div className={`h-full flex flex-col min-h-0 overflow-hidden bg-transparent transition-all duration-200 ${chatCanvasSplit && currentChatAgentHasCanvas ? 'w-full md:w-1/2 lg:w-[50%]' : 'flex-1'}`}>
+{/* Chat Top Navigation / Header (Full AI Studio Upgrade) */}
+                <div className="h-12 px-3 sm:px-5 border-b border-slate-200/80 dark:border-slate-800/80 bg-white/70 dark:bg-slate-900/70 backdrop-blur-md flex items-center justify-between shrink-0 select-none z-10">
+                  {/* Left: History Toggle + Active Agent Info */}
+                  <div className="flex items-center gap-2 min-w-0">
+                    {/* Toggle Chat History Button */}
+                    <button
+                      type="button"
+                      onClick={() => setIsChatHistoryOpen(!isChatHistoryOpen)}
+                      className={`p-1.5 rounded-lg transition cursor-pointer shrink-0 ${
+                        isChatHistoryOpen 
+                          ? 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/30' 
+                          : 'text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+                      }`}
+                      title={isChatHistoryOpen ? 'Collapse Chat History' : 'Open Chat History'}
+                    >
+                      <History className="w-4 h-4" />
+                    </button>
 
-                      return (
-                        <div
-                          key={m.id || mIdx}
-                          className="group flex items-start gap-3 w-full animate-in fade-in duration-200"
+                    {/* New Chat Quick Button */}
+                    <button
+                      type="button"
+                      onClick={() => handleStartNewSession(activeSession?.agent_id || 'ruxt')}
+                      className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer shrink-0"
+                      title="Start New Conversation"
+                    >
+                      <MessageSquarePlus className="w-4 h-4" />
+                    </button>
+
+                    <div className="w-px h-4 bg-slate-200 dark:bg-slate-800 mx-0.5 shrink-0" />
+                    {isSidebarCollapsed && (
+                      <button
+                        type="button"
+                        onClick={() => setIsSidebarCollapsed(false)}
+                        className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition cursor-pointer mr-1 shrink-0"
+                        title="Expand Sidebar"
+                      >
+                        <ChevronRight className="w-4 h-4 text-slate-600 dark:text-slate-400" />
+                      </button>
+                    )}
+                    <div className="relative shrink-0">
+                      <img
+                        src={(currentChatAgent ? currentChatAgent.avatar : ruxtLeader.avatar) || getAgentAvatar(currentChatAgent ? currentChatAgent.slug : 'ruxt')}
+                        alt={currentChatAgent?.name || 'Agent'}
+                        className="w-7 h-7 rounded-lg object-cover ring-1 ring-slate-200 dark:ring-slate-800 bg-white dark:bg-slate-800"
+                        onError={(e) => { e.currentTarget.src = '/ruxt-logo.png'; }}
+                      />
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 absolute -bottom-0.5 -right-0.5 ring-1 ring-white dark:ring-slate-900" />
+                    </div>
+                    <div className="min-w-0 flex items-center gap-2">
+                      <span className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
+                        {currentChatAgent ? currentChatAgent.name : 'RuXt Assistant'}
+                      </span>
+                      {currentChatAgent?.isLeader ? (
+                        <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                          LEADER
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate hidden sm:inline font-mono">
+                          {currentChatAgent ? (currentChatAgent.role || 'Executive Specialist') : 'Chief of Staff'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right Side: Actions (CANVAS BUTTON when agent has canvas) */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    {currentChatAgentHasCanvas && (
+                      <div className="flex items-center gap-1.5 p-0.5 rounded-lg bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
+                        <button
+                          type="button"
+                          onClick={() => setChatCanvasSplit(!chatCanvasSplit)}
+                          className={`px-2.5 py-1 rounded-md text-xs font-medium transition flex items-center gap-1.5 cursor-pointer ${
+                            chatCanvasSplit
+                              ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 shadow-xs'
+                              : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-700/60'
+                          }`}
+                          title={chatCanvasSplit ? 'Close Split Canvas' : `Open ${currentChatAgent.manifest?.ui?.title || 'Canvas'} Side-by-Side with Chat`}
                         >
-                          {/* Agent Avatar */}
-                          <div className="shrink-0 pt-0.5">
-                            <div className="relative">
-                              <img
-                                src={agentAvatar}
-                                alt={agentName}
-                                onError={(e) => {
-                                  if (!e.currentTarget.src.includes('ruxt-logo.png')) {
-                                    e.currentTarget.src = '/ruxt-logo.png';
-                                  }
-                                }}
-                                className="w-8 h-8 rounded-xl object-cover ring-1 ring-slate-200 dark:ring-slate-700 bg-white dark:bg-slate-900 shadow-xs"
-                              />
-                              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-slate-950" />
-                            </div>
-                          </div>
+                          <Layout className="w-3.5 h-3.5" />
+                          <span>Canvas</span>
+                        </button>
 
-                          {/* Agent Message Content */}
-                          <div className="flex-1 min-w-0 max-w-[92%] sm:max-w-[85%]">
-                            {/* Agent Header Info & Action Controls */}
-                            <div className="flex items-center justify-between gap-2 mb-1.5 px-1">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <span className="font-bold text-xs text-slate-900 dark:text-white truncate">{agentName}</span>
-                                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/30 font-medium truncate">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setChatCanvasSplit(false);
+                            setSelectedAgentUi(currentChatAgent);
+                          }}
+                          className="p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition cursor-pointer"
+                          title="Open Canvas in Fullscreen Mode"
+                        >
+                          <Maximize2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {isDesktopRunning && (
+                  <div className="px-4 py-2 bg-rose-500/10 border-b border-rose-500/20 flex items-center justify-between shrink-0">
+                    <span className="text-xs text-rose-600 dark:text-rose-400 font-medium flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+                      Vision Engine is active & controlling screen
+                    </span>
+                    <button
+                      onClick={handleAbortActiveDesktop}
+                      className="px-2.5 py-1 rounded-md bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-medium flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                      title="Emergency Stop: Halt Vision Engine & Screen Control (ESC)"
+                    >
+                      <span>⏹️ Stop Vision Engine</span>
+                      <kbd className="px-1 py-0.2 bg-rose-800 rounded text-[9px] font-mono">ESC</kbd>
+                    </button>
+                  </div>
+                )}
+
+                {/* Messages Box Container (Relative for floating scroll-to-bottom shortcut) */}
+                <div className="flex-1 min-h-0 relative flex flex-col">
+                  {/* Messages Box (Minimalist & Clean) */}
+                  <div 
+                    ref={chatContainerRef}
+                    onScroll={handleChatScroll}
+                    className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 space-y-4"
+                  >
+                  <div className={`max-w-3xl lg:max-w-4xl mx-auto w-full ${messages.length === 0 ? 'h-full flex flex-col justify-center' : 'space-y-6 sm:space-y-7'}`}>
+                    {messages.length === 0 ? (
+                      <div className="h-full flex flex-col items-center justify-center text-center px-4 max-w-md mx-auto py-12 select-text animate-in fade-in duration-200">
+                        {/* Agent Avatar */}
+                        <div className="relative mb-3">
+                          <div className="w-20 h-20 rounded-2xl overflow-hidden ring-1 ring-slate-200 dark:ring-slate-800 shadow-sm bg-white dark:bg-slate-900 mx-auto">
+                            <img
+                              src={(currentChatAgent ? currentChatAgent.avatar : ruxtLeader.avatar) || getAgentAvatar(currentChatAgent ? currentChatAgent.slug : 'ruxt')}
+                              alt={currentChatAgent ? currentChatAgent.name : 'RuXt Assistant'}
+                              onError={(e) => {
+                                if (!e.currentTarget.src.includes('ruxt-logo.png')) {
+                                  e.currentTarget.src = '/ruxt-logo.png';
+                                }
+                              }}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                          {/* ONLINE badge */}
+                          <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 border border-slate-200 dark:border-slate-800 text-[9px] font-semibold tracking-wider uppercase shadow-xs flex items-center gap-1.5 shrink-0">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            ONLINE
+                          </div>
+                        </div>
+
+                        {/* Agent Title & Persona Subtitle */}
+                        <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight mt-2">
+                          {currentChatAgent ? currentChatAgent.name : 'RuXt Assistant'}
+                        </h2>
+                        <p className="text-[11px] font-mono uppercase tracking-wider text-slate-400 dark:text-slate-500 mt-1">
+                          {currentChatAgent 
+                            ? (currentChatAgent.slug === 'ruxt' ? 'Chief of Staff' : currentChatAgent.role) 
+                            : 'Chief of Staff'}
+                        </p>
+
+                        {/* Description / Greeting */}
+                        <p className="text-xs sm:text-[13px] text-slate-500 dark:text-slate-400 leading-relaxed max-w-sm mt-3 font-normal">
+                          &ldquo;{currentChatAgent 
+                            ? (currentChatAgent.description || 'Hello! I am your private AI partner and Chief of Staff. Ask me anything in any language. I can break down projects, delegate to specialist executives, track tasks, and optimize your business.')
+                            : 'Hello! I am your private AI partner and Chief of Staff. Ask me anything in any language. I can break down projects, delegate to specialist executives, track tasks, and optimize your business.'
+                          }&rdquo;
+                        </p>
+                      </div>
+                    ) : (
+                      messages.map((m, mIdx) => {
+                        let meta = null;
+                        try {
+                          meta = m.metadata ? (typeof m.metadata === 'string' ? JSON.parse(m.metadata) : m.metadata) : null;
+                        } catch (_) {}
+
+                        const isUser = m.role === 'user';
+                        const msgAgent = (activeSession?.agent_id && activeSession.agent_id !== 'ruxt')
+                          ? (allKnownAgents.find(a => a.slug === activeSession.agent_id) || currentChatAgent || ruxtLeader)
+                          : (currentChatAgent || ruxtLeader);
+                        const agentAvatar = msgAgent?.avatar || getAgentAvatar(msgAgent?.slug || 'ruxt');
+                        const agentName = msgAgent?.name || 'RuXt Assistant';
+                        const agentRole = msgAgent?.slug === 'ruxt' ? 'Chief of Staff' : (msgAgent?.role || 'Specialist');
+                        const isCopied = copiedMessageId === (m.id || mIdx);
+
+                        if (isUser) {
+                          return (
+                            <div
+                              key={m.id || mIdx}
+                              className="group flex flex-col items-end w-full animate-in fade-in duration-150"
+                            >
+                              <div className="flex items-center gap-2 mb-1.5 px-1 text-[11px] text-slate-400 dark:text-slate-500 font-mono">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(m.content);
+                                    setCopiedMessageId(m.id || mIdx);
+                                    setTimeout(() => setCopiedMessageId(null), 2000);
+                                    showNotification('Message copied to clipboard', 'success');
+                                  }}
+                                  className="opacity-0 group-hover:opacity-100 p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                                  title="Copy message"
+                                >
+                                  {isCopied ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+                                </button>
+                                {m.created_at && (
+                                  <span>{new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                )}
+                                <span className="font-semibold text-slate-600 dark:text-slate-400">You</span>
+                              </div>
+
+                              <div className="max-w-[85%] rounded-2xl rounded-tr-sm px-4 sm:px-5 py-2.5 bg-slate-900 dark:bg-slate-800 text-slate-50 dark:text-slate-100 border border-slate-800 dark:border-slate-700/60 shadow-xs text-[13.5px] leading-relaxed whitespace-pre-wrap select-text">
+                                {m.content}
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div
+                            key={m.id || mIdx}
+                            className="group flex items-start gap-3 w-full animate-in fade-in duration-150"
+                          >
+                            {/* Agent Avatar */}
+                            <div className="shrink-0 pt-0.5">
+                              <div className="relative">
+                                <img
+                                  src={agentAvatar}
+                                  alt={agentName}
+                                  onError={(e) => {
+                                    if (!e.currentTarget.src.includes('ruxt-logo.png')) {
+                                      e.currentTarget.src = '/ruxt-logo.png';
+                                    }
+                                  }}
+                                  className="w-7 h-7 rounded-lg object-cover ring-1 ring-slate-200 dark:ring-slate-800 bg-white dark:bg-slate-900"
+                                />
+                                <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-slate-950" />
+                              </div>
+                            </div>
+
+                            {/* Agent Message Content */}
+                            <div className="flex-1 min-w-0 max-w-[92%] sm:max-w-[85%]">
+                              {/* Agent Header Info */}
+                              <div className="flex items-center gap-2 mb-2 px-0.5">
+                                <span className="font-semibold text-xs sm:text-[13px] text-slate-900 dark:text-slate-100 truncate">{agentName}</span>
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-mono border border-slate-200/60 dark:border-slate-700/60 truncate">
                                   {agentRole}
                                 </span>
                                 {m.created_at && (
@@ -3382,184 +4030,223 @@ export default function App() {
                                 )}
                               </div>
 
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  navigator.clipboard.writeText(m.content);
-                                  showNotification('Response copied to clipboard', 'success');
-                                }}
-                                className="opacity-0 group-hover:opacity-100 px-2 py-0.5 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition flex items-center gap-1 text-[11px] cursor-pointer"
-                                title="Copy complete response"
-                              >
-                                <Copy className="w-3 h-3" />
-                                <span className="hidden sm:inline">Copy</span>
-                              </button>
-                            </div>
+                              {/* Borderless Message Stream (No Card Box) */}
+                              <div className="space-y-3 text-[14px] leading-relaxed text-slate-800 dark:text-slate-200 select-text pl-0.5">
+                                
 
-                            {/* Message Bubble with Polished Markdown Renderer */}
-                            <div className="rounded-2xl rounded-tl-sm p-4 sm:p-5 bg-white dark:bg-slate-900/90 border border-slate-200/90 dark:border-slate-800/90 shadow-md shadow-slate-200/50 dark:shadow-xl backdrop-blur-sm text-[13px] text-slate-800 dark:text-slate-200">
-                              <MarkdownRenderer content={m.content} />
+                                <MarkdownRenderer content={m.content} />
 
-                              {/* Autonomous Live Screen Desktop Operator Card */}
-                              {meta?.desktopAction && (
-                                <DesktopLiveOperatorCard desktopAction={meta.desktopAction} />
-                              )}
+                                {/* Autonomous Live Screen Desktop Operator Card */}
+                                {meta?.desktopAction && (
+                                  <DesktopLiveOperatorCard desktopAction={meta.desktopAction} />
+                                )}
 
-                            {/* Inter-Agent Delegation & Consultation Banner Trigger */}
-                            {meta?.dispatch && (
-                              <div className="mt-4 p-3.5 rounded-2xl bg-gradient-to-r from-indigo-50/70 via-sky-50/60 to-indigo-50/70 dark:from-slate-950 dark:via-indigo-950/40 dark:to-slate-950 border border-indigo-200 dark:border-indigo-500/40 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                                <div className="flex items-center gap-3 min-w-0">
-                                  <div className="flex -space-x-2 shrink-0">
-                                    <img
-                                      src={getAgentAvatar('ruxt')}
-                                      alt="RuXt"
-                                      className="w-8 h-8 rounded-full ring-2 ring-amber-500/80 bg-slate-100 dark:bg-slate-900 object-cover shadow-sm"
-                                    />
-                                    <img
-                                      src={meta.dispatch.specialistAvatar || getAgentAvatar(meta.dispatch.specialistSlug || 'julian-vance')}
-                                      alt={meta.dispatch.specialistName}
-                                      className="w-8 h-8 rounded-full ring-2 ring-emerald-500/80 bg-slate-100 dark:bg-slate-900 object-cover shadow-sm"
-                                    />
-                                  </div>
-                                  <div className="min-w-0">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                                        RuXt ⇄ {meta.dispatch.specialistName}
-                                      </span>
-                                      <span className="text-[9px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-semibold border border-emerald-500/30 flex items-center gap-1">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse" />
-                                        Consensus Reached
-                                      </span>
+                                {/* Inter-Agent Delegation & Consultation Banner Trigger */}
+                                {meta?.dispatch && (
+                                  <div className="mt-3.5 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                                    <div className="flex items-center gap-2.5 min-w-0">
+                                      <div className="flex -space-x-1.5 shrink-0">
+                                        <img
+                                          src={getAgentAvatar('ruxt')}
+                                          alt="RuXt"
+                                          className="w-7 h-7 rounded-full ring-1 ring-slate-300 dark:ring-slate-700 bg-white dark:bg-slate-900 object-cover shadow-xs"
+                                        />
+                                        <img
+                                          src={meta.dispatch.specialistAvatar || getAgentAvatar(meta.dispatch.specialistSlug || 'julian-vance')}
+                                          alt={meta.dispatch.specialistName}
+                                          className="w-7 h-7 rounded-full ring-1 ring-slate-300 dark:ring-slate-700 bg-white dark:bg-slate-900 object-cover shadow-xs"
+                                        />
+                                      </div>
+                                      <div className="min-w-0">
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="text-xs font-semibold text-slate-900 dark:text-white truncate">
+                                            RuXt ⇄ {meta.dispatch.specialistName}
+                                          </span>
+                                          <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium border border-emerald-500/20 flex items-center gap-1">
+                                            <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
+                                            Consensus
+                                          </span>
+                                        </div>
+                                        <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                                          {meta.dispatch.decision || 'Specialist consultation & architectural consensus completed.'}
+                                        </p>
+                                      </div>
                                     </div>
-                                    <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
-                                      {meta.dispatch.decision || 'Specialist consultation & architectural consensus completed.'}
-                                    </p>
-                                  </div>
-                                </div>
 
-                                <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+                                    <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+                                      <button
+                                        type="button"
+                                        onClick={() => setActiveSubChatPopup(meta.dispatch)}
+                                        className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 text-xs font-medium flex items-center justify-center gap-1.5 transition cursor-pointer"
+                                      >
+                                        <MessageSquare className="w-3.5 h-3.5" />
+                                        <span>View Discussion</span>
+                                      </button>
+
+                                      {meta.dispatch.prototypeCode && (
+                                        <button
+                                          type="button"
+                                          onClick={() => setSelectedMockupCode(meta.dispatch.prototypeCode)}
+                                          className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 text-xs font-medium flex items-center gap-1.5 transition cursor-pointer"
+                                          title="Open Live UI Preview"
+                                        >
+                                          <ExternalLink className="w-3.5 h-3.5" />
+                                          <span>Preview</span>
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Executive Board Room Live Deliberation Banner Trigger */}
+                                {meta?.boardroom && (
+                                  <div className="mt-3.5 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                                    <div className="flex items-center gap-2.5 min-w-0">
+                                      <div className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-slate-700 dark:text-slate-300 shrink-0">
+                                        <Users className="w-4 h-4" />
+                                      </div>
+                                      <div className="min-w-0">
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="text-xs font-semibold text-slate-900 dark:text-white uppercase tracking-wider">
+                                            Board Room
+                                          </span>
+                                          <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium border border-emerald-500/20 flex items-center gap-1">
+                                            <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
+                                            Live
+                                          </span>
+                                        </div>
+                                        <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5" title={meta.boardroom.session?.topic || meta.boardroom.topic}>
+                                          {meta.boardroom.session?.topic || meta.boardroom.topic || 'Squad Project Deliberation'}
+                                        </p>
+                                      </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (meta.boardroom.session || meta.boardroom.id) {
+                                            handleOpenBoardroomSession(meta.boardroom.session || meta.boardroom.id);
+                                          } else {
+                                            setIsBoardRoomOpen(true);
+                                          }
+                                        }}
+                                        className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-white text-xs font-medium flex items-center justify-center gap-1.5 transition cursor-pointer shadow-xs"
+                                      >
+                                        <Users className="w-3.5 h-3.5" />
+                                        <span>Watch Live</span>
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setActiveTab('tasks');
+                                          setSelectedAgentUi(null);
+                                        }}
+                                        className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-medium flex items-center gap-1.5 transition cursor-pointer"
+                                        title="View Kanban Tasks"
+                                      >
+                                        <Layers className="w-3.5 h-3.5" />
+                                        <span>Roadmap</span>
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Bottom Action Bar / Controls */}
+                                <div className="mt-3 pt-1 flex items-center gap-2 text-slate-400 dark:text-slate-500">
                                   <button
                                     type="button"
-                                    onClick={() => setActiveSubChatPopup(meta.dispatch)}
-                                    className="flex-1 sm:flex-none px-3.5 py-1.5 rounded-xl bg-indigo-100 hover:bg-indigo-200 dark:bg-indigo-600/30 dark:hover:bg-indigo-600/50 text-indigo-800 dark:text-indigo-200 hover:text-indigo-950 dark:hover:text-white border border-indigo-200 dark:border-indigo-500/40 text-xs font-semibold flex items-center justify-center gap-1.5 transition shadow-xs hover:scale-[1.02]"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(m.content);
+                                      setCopiedMessageId(m.id || mIdx);
+                                      setTimeout(() => setCopiedMessageId(null), 2000);
+                                      showNotification('Response copied to clipboard', 'success');
+                                    }}
+                                    className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-medium text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                                    title="Copy response"
                                   >
-                                    <MessageSquare className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                                    <span>View Discussion (Right Panel ↗)</span>
+                                    {isCopied ? (
+                                      <>
+                                        <Check className="w-3.5 h-3.5 text-emerald-500" />
+                                        <span className="text-emerald-500 font-medium">Copied!</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Copy className="w-3.5 h-3.5" />
+                                        <span>Copy</span>
+                                      </>
+                                    )}
                                   </button>
+                                </div>
+                              </div>
 
-                                  {meta.dispatch.prototypeCode && (
+                              {/* Recommendation Quick-Pill Replies */}
+                              {meta?.quickReplies && mIdx === messages.length - 1 && (
+                                <div className="mt-2.5 flex flex-wrap gap-1.5 max-w-[85%]">
+                                  {meta.quickReplies.map((qr, qrIdx) => (
                                     <button
+                                      key={qrIdx}
                                       type="button"
-                                      onClick={() => setSelectedMockupCode(meta.dispatch.prototypeCode)}
-                                      className="px-3 py-1.5 rounded-xl bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 hover:text-white border border-emerald-500/40 text-xs font-semibold flex items-center gap-1.5 transition shadow-sm hover:scale-[1.02]"
-                                      title="Open Live UI Preview"
+                                      onClick={() => handleSendMessage(null, qr)}
+                                      className="px-3 py-1 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/70 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-700/60 text-slate-700 dark:text-slate-300 text-xs font-medium transition flex items-center gap-1.5 cursor-pointer"
                                     >
-                                      <ExternalLink className="w-3.5 h-3.5" />
-                                      <span>Preview</span>
+                                      <span className="text-slate-400 text-[10px]">✦</span> {qr}
                                     </button>
-                                  )}
+                                  ))}
                                 </div>
-                              </div>
-                            )}
-
-                            {/* Executive Board Room Live Deliberation Banner Trigger */}
-                            {meta?.boardroom && (
-                              <div className="mt-4 p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-emerald-500/10 border border-amber-500/30 dark:border-amber-500/40 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in fade-in duration-200">
-                                <div className="flex items-center gap-3 min-w-0">
-                                  <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 to-indigo-600 flex items-center justify-center text-white shadow-md shrink-0">
-                                    <Users className="w-5 h-5" />
-                                  </div>
-                                  <div className="min-w-0">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
-                                        Executive Board Room
-                                      </span>
-                                      <span className="text-[9px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-500/30 flex items-center gap-1">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse" />
-                                        LIVE DELIBERATION
-                                      </span>
-                                    </div>
-                                    <p className="text-[11px] text-slate-600 dark:text-slate-300 font-medium truncate mt-0.5" title={meta.boardroom.session?.topic || meta.boardroom.topic}>
-                                      🎯 {meta.boardroom.session?.topic || meta.boardroom.topic || 'Squad Project Deliberation'}
-                                    </p>
-                                  </div>
-                                </div>
-
-                                <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      if (meta.boardroom.session || meta.boardroom.id) {
-                                        handleOpenBoardroomSession(meta.boardroom.session || meta.boardroom.id);
-                                      } else {
-                                        setIsBoardRoomOpen(true);
-                                      }
-                                    }}
-                                    className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/20 transition hover:scale-[1.02]"
-                                  >
-                                    <Users className="w-3.5 h-3.5 text-slate-950" />
-                                    <span>Watch Live in Board Room ↗</span>
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setActiveTab('tasks');
-                                      setSelectedAgentUi(null);
-                                    }}
-                                    className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition"
-                                    title="View Kanban Tasks"
-                                  >
-                                    <Layers className="w-3.5 h-3.5" />
-                                    <span>Roadmap</span>
-                                  </button>
-                                </div>
-                              </div>
-                            )}
+                              )}
                             </div>
-
-                            {/* Recommendation Quick-Pill Replies */}
-                            {meta?.quickReplies && mIdx === messages.length - 1 && (
-                              <div className="mt-2.5 flex flex-wrap gap-2 max-w-[85%]">
-                                {meta.quickReplies.map((qr, qrIdx) => (
-                                  <button
-                                    key={qrIdx}
-                                    type="button"
-                                    onClick={() => handleSendMessage(null, qr)}
-                                    className="px-3.5 py-1.5 rounded-full bg-slate-900/90 hover:bg-indigo-950/90 border border-slate-700 hover:border-indigo-500 text-indigo-300 hover:text-white text-xs font-semibold transition shadow-sm hover:scale-[1.02] flex items-center gap-1.5"
-                                  >
-                                    <span>✦</span> {qr}
-                                  </button>
-                                ))}
-                              </div>
-                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                    {loadingMessage && (
+                      <div className="flex items-start gap-3 w-full animate-in fade-in duration-150">
+                        <div className="shrink-0 pt-0.5">
+                          <div className="relative">
+                            <img
+                              src={(currentChatAgent ? currentChatAgent.avatar : ruxtLeader.avatar) || getAgentAvatar(currentChatAgent ? currentChatAgent.slug : 'ruxt')}
+                              alt="AI Agent"
+                              onError={(e) => { e.target.src = getAgentAvatar(currentChatAgent ? currentChatAgent.slug : 'ruxt'); }}
+                              className="w-7 h-7 rounded-lg object-cover ring-1 ring-slate-200 dark:ring-slate-800 bg-white dark:bg-slate-900"
+                            />
+                            <span className="w-2 h-2 rounded-full bg-slate-400 dark:bg-slate-500 animate-ping absolute -bottom-0.5 -right-0.5" />
                           </div>
                         </div>
-                      );
-                    })
-                  )}
-                  {loadingMessage && (
-                    <div className="flex items-start gap-3 w-full animate-in fade-in duration-200">
-                      <div className="shrink-0 pt-0.5">
-                        <div className="relative">
-                          <img
-                            src={(currentChatAgent ? currentChatAgent.avatar : ruxtLeader.avatar) || getAgentAvatar(currentChatAgent ? currentChatAgent.slug : 'ruxt')}
-                            alt="AI Agent"
-                            onError={(e) => { e.target.src = getAgentAvatar(currentChatAgent ? currentChatAgent.slug : 'ruxt'); }}
-                            className="w-8 h-8 rounded-xl object-cover ring-1 ring-slate-700 bg-slate-900 shadow"
-                          />
-                          <span className="w-2.5 h-2.5 rounded-full bg-indigo-400 animate-ping absolute -bottom-0.5 -right-0.5" />
+                        <div className="flex-1 min-w-0 max-w-[92%] sm:max-w-[85%]">
+                          <div className="py-1 text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2.5 pl-0.5">
+                            <span className="flex gap-1.5 items-center">
+                              <span className="w-1.5 h-1.5 rounded-full bg-slate-400 dark:bg-slate-500 animate-bounce" style={{ animationDelay: '0ms' }} />
+                              <span className="w-1.5 h-1.5 rounded-full bg-slate-400 dark:bg-slate-500 animate-bounce" style={{ animationDelay: '150ms' }} />
+                              <span className="w-1.5 h-1.5 rounded-full bg-slate-400 dark:bg-slate-500 animate-bounce" style={{ animationDelay: '300ms' }} />
+                            </span>
+                            <span className="font-medium text-slate-600 dark:text-slate-300">
+                              {currentChatAgent ? `${currentChatAgent.name} is thinking...` : `Reasoning via ${PROVIDER_NAMES[settings.active_provider] || 'AI'}...`}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                      <div className="bg-slate-900/90 border border-slate-800/80 rounded-2xl rounded-tl-sm p-4 text-xs text-slate-300 flex items-center gap-2.5 shadow-lg backdrop-blur-sm">
-                        <span className="w-2 h-2 rounded-full bg-indigo-400 animate-ping" />
-                        <span className="font-medium text-slate-200">
-                          {currentChatAgent ? `${currentChatAgent.name} is reasoning & generating response...` : `Reasoning via ${PROVIDER_NAMES[settings.active_provider] || 'AI'}...`}
-                        </span>
-                      </div>
+                    )}
+                    {/* Invisible anchor to scroll into view */}
+                    <div ref={messagesEndRef} className="h-0 w-full" />
+                    </div>
+                  </div>
+
+                  {/* Floating Scroll to Bottom Shortcut Button */}
+                  {showScrollBottomButton && (
+                    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-30 animate-in fade-in zoom-in duration-150">
+                      <button
+                        type="button"
+                        onClick={() => scrollToBottom('smooth')}
+                        className="w-8 h-8 rounded-full flex items-center justify-center bg-white/95 dark:bg-slate-900/95 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200/90 dark:border-slate-700/80 shadow-md backdrop-blur-md transition-all duration-150 cursor-pointer hover:scale-105 active:scale-95"
+                        title="Scroll to bottom"
+                        aria-label="Scroll to bottom"
+                      >
+                        <ArrowDown className="w-4 h-4 text-slate-600 dark:text-slate-300" />
+                      </button>
                     </div>
                   )}
-                  </div>
                 </div>
 
                 {/* Active Engine Paused / Disconnected Warning Alert */}
@@ -3567,34 +4254,34 @@ export default function App() {
                   const currentStatus = settings[`engine_status_${settings.active_provider || 'antigravity'}`] || 'connected';
                   if (currentStatus === 'paused') {
                     return (
-                      <div className="mx-3 mt-2 p-3 rounded-2xl bg-amber-950/40 border border-amber-500/30 flex items-center justify-between text-xs text-amber-200">
+                      <div className="mx-4 mt-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-between text-xs text-amber-800 dark:text-amber-200">
                         <div className="flex items-center gap-2">
-                          <Pause className="w-4 h-4 text-amber-400 shrink-0" />
+                          <Pause className="w-4 h-4 text-amber-500 shrink-0" />
                           <span><strong>{PROVIDER_NAMES[settings.active_provider] || 'Selected Engine'}</strong> is currently <strong>PAUSED</strong>.</span>
                         </div>
                         <button
                           type="button"
                           onClick={() => handleSaveSetting(`engine_status_${settings.active_provider || 'antigravity'}`, 'connected')}
-                          className="px-3 py-1 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px] transition shadow"
+                          className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 font-medium text-[11px] transition shadow-xs cursor-pointer"
                         >
-                          Resume Engine
+                          Resume
                         </button>
                       </div>
                     );
                   }
                   if (currentStatus === 'disconnected') {
                     return (
-                      <div className="mx-3 mt-2 p-3 rounded-2xl bg-rose-950/40 border border-rose-500/30 flex items-center justify-between text-xs text-rose-200">
+                      <div className="mx-4 mt-2 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-between text-xs text-rose-800 dark:text-rose-200">
                         <div className="flex items-center gap-2">
-                          <PowerOff className="w-4 h-4 text-rose-400 shrink-0" />
+                          <PowerOff className="w-4 h-4 text-rose-500 shrink-0" />
                           <span><strong>{PROVIDER_NAMES[settings.active_provider] || 'Selected Engine'}</strong> is <strong>DISCONNECTED</strong>.</span>
                         </div>
                         <button
                           type="button"
                           onClick={() => handleSaveSetting(`engine_status_${settings.active_provider || 'antigravity'}`, 'connected')}
-                          className="px-3 py-1 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-[11px] transition shadow"
+                          className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-[11px] transition shadow-xs cursor-pointer"
                         >
-                          Connect Engine
+                          Connect
                         </button>
                       </div>
                     );
@@ -3602,41 +4289,40 @@ export default function App() {
                   return null;
                 })()}
 
-                {/* Input Section Container (Borderless Layout) */}
-                <div className="max-w-5xl mx-auto w-full">
-                  {/* Floating Modern Input Section (Matching User Reference Image) */}
-                  <div className="p-4 sm:p-5 pt-0 relative">
+{/* Input Section Container (Minimalist & Clean) */}
+                <div className="max-w-3xl lg:max-w-4xl mx-auto w-full px-4 sm:px-6 pb-4 pt-1">
+                  <div className="relative">
 
-                    {/* Floating Autocomplete Dropdown Menu (@ Mentions & / Slash Actions) directly above input */}
+                    {/* Floating Autocomplete Dropdown Menu (@ Mentions & / Slash Actions) */}
                     {autocompleteMode && activeAutocompleteItems.length > 0 && (
                       <div 
                         ref={autocompleteListRef}
-                        className="absolute bottom-full mb-3 left-4 right-4 sm:left-5 sm:right-5 z-50 bg-slate-900/95 dark:bg-slate-900/98 backdrop-blur-xl border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-150 max-h-80 flex flex-col"
+                        className="absolute bottom-full mb-2.5 left-0 right-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-150 max-h-72 flex flex-col"
                       >
                         {/* Autocomplete Header */}
-                        <div className="flex items-center justify-between px-3.5 py-2 bg-slate-800/80 border-b border-slate-700/60 shrink-0">
+                        <div className="flex items-center justify-between px-3.5 py-2 bg-slate-50/80 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 shrink-0">
                           <div className="flex items-center gap-2">
                             {autocompleteMode === 'mention' ? (
                               <>
-                                <span className="w-5 h-5 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold text-xs">@</span>
-                                <span className="text-xs font-bold text-slate-200">Mention Specialist Agent</span>
+                                <span className="w-4 h-4 rounded-md bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 flex items-center justify-center font-bold text-[10px]">@</span>
+                                <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">Mention Specialist Agent</span>
                                 <span className="text-[10px] text-slate-400 font-mono">({activeAutocompleteItems.length})</span>
                               </>
                             ) : (
                               <>
-                                <span className="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold text-xs font-mono">/</span>
-                                <span className="text-xs font-bold text-slate-200">Actions & Commands</span>
+                                <span className="w-4 h-4 rounded-md bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 flex items-center justify-center font-bold text-[10px] font-mono">/</span>
+                                <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">Actions & Commands</span>
                                 <span className="text-[10px] text-slate-400 font-mono">({activeAutocompleteItems.length})</span>
                               </>
                             )}
                           </div>
                           <div className="flex items-center gap-2 text-[10px] text-slate-400">
-                            <span className="hidden sm:inline">↑↓ to navigate • Enter to select • Esc to dismiss</span>
+                            <span className="hidden sm:inline">↑↓ navigate • Enter select • Esc dismiss</span>
                           </div>
                         </div>
 
                         {/* Scrollable Items List */}
-                        <div className="overflow-y-auto flex-1 divide-y divide-slate-800/50 p-1">
+                        <div className="overflow-y-auto flex-1 divide-y divide-slate-100 dark:divide-slate-800/60 p-1">
                           {autocompleteMode === 'mention' ? (
                             activeAutocompleteItems.map((ag, idx) => {
                               const isSelected = idx === autocompleteIndex;
@@ -3646,36 +4332,36 @@ export default function App() {
                                   data-index={idx}
                                   onMouseEnter={() => setAutocompleteIndex(idx)}
                                   onClick={() => handleSelectMention(ag)}
-                                  className={`flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition ${
+                                  className={`flex items-center gap-2.5 px-3 py-2 rounded-lg cursor-pointer transition ${
                                     isSelected 
-                                      ? 'bg-indigo-600/30 text-white border-l-4 border-indigo-500 shadow-sm' 
-                                      : 'hover:bg-slate-800/50 text-slate-300'
+                                      ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white font-medium' 
+                                      : 'hover:bg-slate-50 dark:hover:bg-slate-800/50 text-slate-700 dark:text-slate-300'
                                   }`}
                                 >
                                   <div className="relative shrink-0">
                                     <img 
                                       src={ag.avatar} 
                                       alt={ag.name} 
-                                      className="w-8 h-8 rounded-full object-cover border border-slate-700"
+                                      className="w-6 h-6 rounded-md object-cover border border-slate-200 dark:border-slate-700"
                                       onError={(e) => { e.target.style.display = 'none'; }}
                                     />
                                   </div>
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2">
-                                      <span className="text-xs font-bold truncate text-white">{ag.name}</span>
-                                      <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-indigo-500/20 text-indigo-300 font-medium border border-indigo-500/30 shrink-0">
+                                      <span className="text-xs font-semibold truncate text-slate-900 dark:text-white">{ag.name}</span>
+                                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-mono border border-slate-200 dark:border-slate-700 shrink-0">
                                         {ag.role}
                                       </span>
                                       {ag.slug === 'ruxt' && (
-                                        <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
+                                        <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold border border-amber-500/20">
                                           LEADER
                                         </span>
                                       )}
                                     </div>
-                                    <p className="text-[11px] text-slate-400 truncate mt-0.5">{ag.description}</p>
+                                    <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate mt-0.5">{ag.description}</p>
                                   </div>
                                   {isSelected && (
-                                    <div className="text-[10px] font-mono text-indigo-400 bg-indigo-950/60 px-2 py-0.5 rounded border border-indigo-500/40 shrink-0">
+                                    <div className="text-[10px] font-mono text-slate-500 dark:text-slate-400 bg-slate-200 dark:bg-slate-800 px-1.5 py-0.5 rounded shrink-0">
                                       Tab ↵
                                     </div>
                                   )}
@@ -3692,29 +4378,29 @@ export default function App() {
                                   data-index={idx}
                                   onMouseEnter={() => setAutocompleteIndex(idx)}
                                   onClick={() => handleSelectAction(act)}
-                                  className={`flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition ${
+                                  className={`flex items-center gap-2.5 px-3 py-2 rounded-lg cursor-pointer transition ${
                                     isSelected 
-                                      ? 'bg-cyan-600/25 text-white border-l-4 border-cyan-400 shadow-sm' 
-                                      : 'hover:bg-slate-800/50 text-slate-300'
+                                      ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white font-medium' 
+                                      : 'hover:bg-slate-50 dark:hover:bg-slate-800/50 text-slate-700 dark:text-slate-300'
                                   }`}
                                 >
-                                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border ${
-                                    isSelected ? 'bg-cyan-500/20 border-cyan-400/50 text-cyan-300' : 'bg-slate-800 border-slate-700 text-slate-400'
+                                  <div className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 border ${
+                                    isSelected ? 'bg-slate-200 dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-200' : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500'
                                   }`}>
-                                    <IconComp className="w-4 h-4" />
+                                    <IconComp className="w-3.5 h-3.5" />
                                   </div>
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2">
-                                      <span className="text-xs font-mono font-bold text-cyan-300">{act.prefix}</span>
-                                      <span className="text-xs font-semibold text-white">{act.title}</span>
+                                      <span className="text-xs font-mono font-bold text-slate-800 dark:text-slate-200">{act.prefix}</span>
+                                      <span className="text-xs font-medium text-slate-900 dark:text-white">{act.title}</span>
                                       <span className={`text-[10px] px-1.5 py-0.2 rounded font-medium border shrink-0 ${act.badgeColor}`}>
                                         {act.category}
                                       </span>
                                     </div>
-                                    <p className="text-[11px] text-slate-400 truncate mt-0.5">{act.description}</p>
+                                    <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate mt-0.5">{act.description}</p>
                                   </div>
                                   {isSelected && (
-                                    <div className="text-[10px] font-mono text-cyan-400 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-500/40 shrink-0">
+                                    <div className="text-[10px] font-mono text-slate-500 dark:text-slate-400 bg-slate-200 dark:bg-slate-800 px-1.5 py-0.5 rounded shrink-0">
                                       Tab ↵
                                     </div>
                                   )}
@@ -3726,24 +4412,25 @@ export default function App() {
                       </div>
                     )}
 
-                    <div className="bg-white dark:bg-slate-900/90 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xl dark:shadow-2xl p-3.5 backdrop-blur transition-all focus-within:border-indigo-500/60 focus-within:ring-2 focus-within:ring-indigo-500/20">
+                    {/* Clean Minimalist Input Card */}
+                    <div className="bg-white dark:bg-slate-900/90 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm focus-within:border-slate-400 dark:focus-within:border-slate-600 focus-within:shadow transition-all p-3 backdrop-blur-sm">
                     
-                    {/* Attached Files Preview Bar (if any) */}
+                    {/* Attached Files Preview Bar */}
                     {attachedFiles.length > 0 && (
-                      <div className="flex flex-wrap gap-2 mb-2.5 pb-2 border-b border-slate-200 dark:border-slate-800/80">
+                      <div className="flex flex-wrap gap-2 mb-2 pb-2 border-b border-slate-100 dark:border-slate-800">
                         {attachedFiles.map(file => (
-                          <div key={file.id} className="flex items-center gap-2 pl-2 pr-1.5 py-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-slate-200">
+                          <div key={file.id} className="flex items-center gap-1.5 pl-2 pr-1.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-slate-200">
                             {file.type?.startsWith('image/') ? (
-                              <img src={file.dataUrl} alt={file.name} className="w-5 h-5 rounded object-cover" />
+                              <img src={file.dataUrl} alt={file.name} className="w-4 h-4 rounded object-cover" />
                             ) : (
-                              <Paperclip className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
+                              <Paperclip className="w-3 h-3 text-slate-500" />
                             )}
-                            <span className="max-w-[140px] truncate text-[11px] font-medium">{file.name}</span>
-                            <span className="text-[9px] text-slate-400 dark:text-slate-500 font-mono">({file.size})</span>
+                            <span className="max-w-[130px] truncate text-[11px] font-medium">{file.name}</span>
+                            <span className="text-[9px] text-slate-400 font-mono">({file.size})</span>
                             <button
                               type="button"
                               onClick={() => setAttachedFiles(prev => prev.filter(f => f.id !== file.id))}
-                              className="p-0.5 hover:text-rose-500 text-slate-400 rounded transition"
+                              className="p-0.5 hover:text-rose-500 text-slate-400 rounded transition cursor-pointer"
                               title="Remove file"
                             >
                               <X className="w-3 h-3" />
@@ -3753,16 +4440,17 @@ export default function App() {
                       </div>
                     )}
 
-                    {/* Textarea Input matching placeholder "Ask anything, @ to mention, / for actions" */}
+                    {/* Textarea Input */}
                     <textarea
                       ref={chatInputRef}
-                      rows={2}
+                      rows={Math.min(5, Math.max(2, (inputMessage || '').split('\n').length))}
                       value={inputMessage}
                       onChange={handleChatInputChange}
                       onKeyDown={handleChatInputKeyDown}
                       onPaste={handlePasteClipboard}
                       placeholder="Ask anything, @ to mention, / for actions"
-                      className="w-full bg-transparent border-0 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-xs sm:text-sm focus:outline-none resize-none leading-relaxed"
+                      className="w-full bg-transparent border-0 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 text-xs sm:text-[13.5px] focus:outline-none resize-none leading-relaxed min-h-[44px] max-h-[140px] overflow-y-auto"
+                      style={{ maxHeight: '140px' }}
                     />
 
                     {/* Hidden File Picker Input */}
@@ -3775,23 +4463,22 @@ export default function App() {
                     />
 
                     {/* Bottom Controls Row inside Input Box */}
-                    <div className="flex items-center justify-between pt-2.5 mt-1 border-t border-slate-100 dark:border-slate-800/60 flex-wrap gap-2">
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800/60 flex-wrap gap-2">
                       
                       {/* Left Controls: Plus Attachment Button */}
-                      <div className="flex items-center gap-1.5 sm:gap-2">
-                        {/* Plus Attachment Button */}
+                      <div className="flex items-center gap-1.5">
                         <button
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
-                          className="w-7 h-7 rounded-xl bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700/80 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex items-center justify-center transition border border-slate-200 dark:border-slate-700/60 shadow-xs"
+                          className="w-7 h-7 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center transition cursor-pointer"
                           title="Attach file, document, or screenshot (+)"
                         >
                           <Plus className="w-4 h-4" />
                         </button>
                       </div>
 
-                      {/* Right Controls: Turbo Toggle + Mic Voice Dictation + Circular Green Arrow Send Button */}
-                      <div className="flex items-center gap-2">
+                      {/* Right Controls: Turbo Toggle + Mic Voice Dictation + Minimalist Send Button */}
+                      <div className="flex items-center gap-1.5">
                         
                         {/* Turbo Toggle Pill */}
                         <button
@@ -3800,67 +4487,66 @@ export default function App() {
                             setIsTurboEnabled(!isTurboEnabled);
                             showNotification(isTurboEnabled ? 'Turbo mode disabled' : '⚡ Turbo mode enabled: ultra-fast reasoning', 'success');
                           }}
-                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-semibold border transition ${
+                          className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition cursor-pointer border ${
                             isTurboEnabled
-                              ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/50 shadow-xs'
-                              : 'bg-slate-100 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 border-slate-200 dark:border-slate-700/60'
+                              ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30'
+                              : 'bg-slate-50 dark:bg-slate-800/40 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 border-slate-200/60 dark:border-slate-800'
                           }`}
                           title="Toggle Turbo ultra-fast reasoning mode"
                         >
-                          <Zap className={`w-3.5 h-3.5 ${isTurboEnabled ? 'text-amber-500 dark:text-amber-400 fill-amber-400' : 'text-slate-400 dark:text-slate-500'}`} />
+                          <Zap className={`w-3 h-3 ${isTurboEnabled ? 'text-amber-500 fill-amber-500' : 'text-slate-400'}`} />
                           <span>Turbo</span>
-                          <span className={`text-[9px] px-1 py-0.2 rounded font-mono ${
-                            isTurboEnabled ? 'bg-amber-500/30 text-amber-800 dark:text-amber-200 font-bold' : 'bg-slate-200 dark:bg-slate-700/60 text-slate-600 dark:text-slate-400'
-                          }`}>
-                            {isTurboEnabled ? 'ON' : 'OFF'}
-                          </span>
                         </button>
 
                         {/* Voice Microphone Button */}
                         <button
                           type="button"
                           onClick={toggleVoiceRecording}
-                          className={`w-8 h-8 rounded-full flex items-center justify-center transition border ${
+                          className={`w-7 h-7 rounded-lg flex items-center justify-center transition cursor-pointer ${
                             isRecordingVoice
-                              ? 'bg-rose-600 text-white border-rose-400 animate-pulse shadow-md shadow-rose-600/40'
-                              : 'bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700/80 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border-slate-200 dark:border-slate-700/60'
+                              ? 'bg-rose-600 text-white animate-pulse shadow-xs'
+                              : 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
                           }`}
                           title={isRecordingVoice ? 'Listening... Click to stop voice dictation' : 'Voice input (Speech to text)'}
                         >
-                          <Mic className="w-4 h-4" />
+                          <Mic className="w-3.5 h-3.5" />
                         </button>
 
-                        {/* Circular Green Upward Arrow Send Button */}
-                        <button
-                          type="button"
-                          onClick={handleSendMessage}
-                          disabled={loadingMessage || (!inputMessage.trim() && attachedFiles.length === 0)}
-                          className={`w-8 h-8 rounded-full flex items-center justify-center transition shadow-md ${
-                            loadingMessage || (!inputMessage.trim() && attachedFiles.length === 0)
-                              ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed border border-slate-200 dark:border-slate-700/40'
-                              : 'bg-emerald-600 hover:bg-emerald-500 text-white dark:bg-emerald-950 dark:hover:bg-emerald-600 dark:text-emerald-400 dark:hover:text-white border border-emerald-500/60 shadow-emerald-500/20 transform hover:scale-105 active:scale-95'
-                          }`}
-                          title="Send message (Enter)"
-                        >
-                          {loadingMessage ? (
-                            <RefreshCw className="w-4 h-4 animate-spin text-slate-400" />
-                          ) : (
-                            <ArrowUp className="w-4 h-4 stroke-[2.5]" />
-                          )}
-                        </button>
+                        {/* Action Button: Send Arrow when idle, Stop Button when working */}
+                        {loadingMessage ? (
+                          <button
+                            type="button"
+                            onClick={handleStopMessage}
+                            className="w-7 h-7 rounded-lg flex items-center justify-center transition shadow-xs bg-rose-600 hover:bg-rose-700 text-white cursor-pointer animate-pulse"
+                            title="Stop agent work (ESC)"
+                          >
+                            <Square className="w-2.5 h-2.5 fill-current" />
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={handleSendMessage}
+                            disabled={!inputMessage.trim() && attachedFiles.length === 0}
+                            className={`w-7 h-7 rounded-lg flex items-center justify-center transition shadow-xs ${
+                              !inputMessage.trim() && attachedFiles.length === 0
+                                ? 'bg-slate-100 dark:bg-slate-800/80 text-slate-300 dark:text-slate-600 cursor-not-allowed'
+                                : 'bg-slate-900 hover:bg-black text-white dark:bg-white dark:hover:bg-slate-100 dark:text-slate-950 cursor-pointer'
+                            }`}
+                            title="Send message (Enter)"
+                          >
+                            <ArrowUp className="w-3.5 h-3.5 stroke-[2.5]" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
 
                   {/* Caption / Helper Info Below Input Box */}
-                  <div className="flex items-center justify-between px-3 mt-2 text-[11px]">
-                    <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
-                      <Sparkles className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400/80" />
-                      <span>Voice & text, drag-and-drop & screenshot paste (Ctrl+V)</span>
-                    </div>
-                    <div className="flex items-center gap-1 text-slate-500 dark:text-slate-400 text-[10px]">
+                  <div className="flex items-center justify-between px-2 mt-1.5 text-[11px] text-slate-400 dark:text-slate-500">
+                    <span className="hidden sm:inline">Use @ to mention • / for commands</span>
+                    <div className="flex items-center gap-1 ml-auto">
                       <span>Press</span>
-                      <kbd className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-mono text-[9px] shadow-xs">
+                      <kbd className="px-1 py-0.2 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-mono text-[9px]">
                         Enter
                       </kbd>
                       <span>to send</span>
@@ -3868,46 +4554,101 @@ export default function App() {
                   </div>
                 </div>
               </div>
+
+              {/* Split Canvas Column (Right Side of Chat View) */}
+              {chatCanvasSplit && currentChatAgentHasCanvas && (
+                <div className="w-full md:w-1/2 lg:w-[50%] h-full flex flex-col min-h-0 bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 shrink-0 animate-in slide-in-from-right duration-150 z-10">
+                  <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50/80 dark:bg-slate-900/80 border-b border-slate-200 dark:border-slate-800 text-xs text-slate-700 dark:text-slate-300 shrink-0">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-5 h-5 rounded-md bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-400 shrink-0">
+                        <Layout className="w-3 h-3" />
+                      </div>
+                      <span className="font-semibold text-slate-900 dark:text-white truncate">
+                        {currentChatAgent.manifest?.ui?.title || `${currentChatAgent.name} Canvas`}
+                      </span>
+                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-200/60 dark:bg-slate-800 text-slate-500 font-mono hidden sm:inline">
+                        {currentChatAgent.uiEntry}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const iframe = document.getElementById('chat-split-canvas-iframe');
+                          if (iframe) iframe.src = iframe.src;
+                        }}
+                        className="p-1.5 rounded-md hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white transition cursor-pointer"
+                        title="Reload Canvas"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setChatCanvasSplit(false);
+                          setSelectedAgentUi(currentChatAgent);
+                        }}
+                        className="p-1.5 rounded-md hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white transition cursor-pointer"
+                        title="Maximize Canvas to Fullscreen"
+                      >
+                        <Maximize2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setChatCanvasSplit(false)}
+                        className="p-1.5 rounded-md hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 hover:text-rose-500 transition cursor-pointer"
+                        title="Close Split Canvas"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <iframe
+                    id="chat-split-canvas-iframe"
+                    src={currentChatAgent.uiEntry}
+                    title={currentChatAgent.name}
+                    className="w-full flex-1 border-0 bg-white dark:bg-slate-950"
+                  />
+                </div>
+              )}
             </div>
 
-              {/* Right-Side Popup / Drawer for Inter-Agent Sub-Conversation */}
+              {/* Right-Side Popup / Drawer for Inter-Agent Sub-Conversation (Minimalist & Clean) */}
               {activeSubChatPopup && (
                 <div 
-                  className="w-[360px] sm:w-[420px] lg:w-[460px] h-full border-l backdrop-blur-xl flex flex-col shrink-0 z-20 shadow-2xl animate-in slide-in-from-right duration-200"
-                  style={{ backgroundColor: 'var(--theme-card)', borderColor: 'var(--theme-border)' }}
+                  className="w-[360px] sm:w-[420px] lg:w-[460px] h-full border-l border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl flex flex-col shrink-0 z-20 shadow-xl animate-in slide-in-from-right duration-150"
                 >
                   {/* Header */}
-                  <div 
-                    className="p-4 border-b flex items-center justify-between shrink-0"
-                    style={{ backgroundColor: 'var(--theme-header)', borderColor: 'var(--theme-border)' }}
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="flex -space-x-2 shrink-0">
+                  <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/70 flex items-center justify-between shrink-0">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="flex -space-x-1.5 shrink-0">
                         <img
                           src={getAgentAvatar('ruxt')}
                           alt="RuXt"
-                          className="w-8 h-8 rounded-full ring-2 ring-amber-500/80 bg-slate-100 dark:bg-slate-900 object-cover shadow-sm"
+                          className="w-7 h-7 rounded-full ring-1 ring-slate-300 dark:ring-slate-700 bg-white dark:bg-slate-900 object-cover shadow-xs"
                         />
                         <img
                           src={activeSubChatPopup.specialistAvatar || getAgentAvatar(activeSubChatPopup.specialistSlug || 'julian-vance')}
                           alt={activeSubChatPopup.specialistName}
-                          className="w-8 h-8 rounded-full ring-2 ring-emerald-500/80 bg-slate-100 dark:bg-slate-900 object-cover shadow-sm"
+                          className="w-7 h-7 rounded-full ring-1 ring-slate-300 dark:ring-slate-700 bg-white dark:bg-slate-900 object-cover shadow-xs"
                         />
                       </div>
                       <div className="min-w-0">
-                        <h3 className="font-bold text-slate-900 dark:text-white text-xs flex items-center gap-1.5 truncate">
-                          <span>RuXt ⇄ {activeSubChatPopup.specialistName}</span>
+                        <h3 className="font-semibold text-slate-900 dark:text-white text-xs truncate">
+                          RuXt ⇄ {activeSubChatPopup.specialistName}
                         </h3>
-                        <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium truncate block">
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono truncate block">
                           {activeSubChatPopup.specialistRole || 'Executive Specialist'}
                         </span>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1">
                       <button
                         onClick={() => setActiveSubChatPopup(null)}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
                         title="Close Discussion Panel"
                       >
                         <X className="w-4 h-4" />
@@ -3917,23 +4658,23 @@ export default function App() {
 
                   {/* Decision Banner Callout */}
                   {activeSubChatPopup.decision && (
-                    <div className="m-3 p-3.5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-emerald-500/10 border border-amber-500/30 text-xs text-amber-900 dark:text-amber-200 shadow-xs">
-                      <div className="flex items-center gap-1.5 font-bold text-amber-700 dark:text-amber-300 text-[11px] mb-1">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
+                    <div className="m-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 text-xs shadow-xs">
+                      <div className="flex items-center gap-1.5 font-semibold text-slate-800 dark:text-slate-200 text-[11px] mb-1">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
                         <span>Agreed Decision & Action Plan</span>
                       </div>
-                      <p className="text-[11px] text-slate-700 dark:text-slate-300 leading-relaxed font-normal">
+                      <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed font-normal">
                         {activeSubChatPopup.decision}
                       </p>
                     </div>
                   )}
 
                   {/* Scrollable Conversation Stream */}
-                  <div className="flex-1 overflow-y-auto p-4 space-y-3.5">
-                    <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest text-center my-1 flex items-center justify-center gap-2">
-                      <span className="h-px w-8 bg-slate-200 dark:bg-slate-800" />
+                  <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                    <div className="text-[10px] font-mono font-medium text-slate-400 uppercase tracking-wider text-center my-1 flex items-center justify-center gap-2">
+                      <span className="h-px w-6 bg-slate-200 dark:bg-slate-800" />
                       <span>Inter-Agent Deliberation</span>
-                      <span className="h-px w-8 bg-slate-200 dark:bg-slate-800" />
+                      <span className="h-px w-6 bg-slate-200 dark:bg-slate-800" />
                     </div>
 
                     {activeSubChatPopup.subChat && activeSubChatPopup.subChat.map((msg, idx) => {
@@ -3945,29 +4686,29 @@ export default function App() {
                       return (
                         <div 
                           key={idx}
-                          className={`p-3.5 rounded-2xl border transition ${
+                          className={`p-3 rounded-xl border transition ${
                             isFromRuxt
-                              ? 'bg-amber-50/60 dark:bg-slate-900/90 border-amber-300 dark:border-amber-500/30 text-slate-800 dark:text-slate-200 shadow-xs'
-                              : 'bg-indigo-50/60 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-500/30 text-slate-800 dark:text-slate-200 shadow-xs'
+                              ? 'bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 shadow-xs'
+                              : 'bg-slate-100/70 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700/60 text-slate-800 dark:text-slate-200 shadow-xs'
                           }`}
                         >
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2">
+                          <div className="flex items-center justify-between mb-1.5">
+                            <div className="flex items-center gap-1.5">
                               <img 
                                 src={senderAvatar} 
                                 alt={msg.fromName} 
-                                className={`w-5 h-5 rounded-md object-cover ring-1 ${isFromRuxt ? 'ring-amber-400' : 'ring-indigo-400'}`} 
+                                className="w-4 h-4 rounded object-cover ring-1 ring-slate-200 dark:ring-slate-700" 
                               />
-                              <span className={`text-[11px] font-bold ${isFromRuxt ? 'text-amber-700 dark:text-amber-300' : 'text-indigo-700 dark:text-indigo-300'}`}>
+                              <span className="text-[11px] font-semibold text-slate-900 dark:text-white">
                                 {msg.fromName}
                               </span>
                             </div>
-                            <span className="text-[9px] font-mono text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800">
+                            <span className="text-[9px] font-mono text-slate-400 dark:text-slate-500 px-1 py-0.2 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
                               {msg.time || 'Phase ' + (idx + 1)}
                             </span>
                           </div>
 
-                          <div className="text-xs text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-wrap">
+                          <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">
                             {msg.message}
                           </div>
                         </div>
@@ -3976,21 +4717,18 @@ export default function App() {
                   </div>
 
                   {/* Footer with actions */}
-                  <div 
-                    className="p-3 border-t flex items-center justify-between text-xs"
-                    style={{ backgroundColor: 'var(--theme-header)', borderColor: 'var(--theme-border)' }}
-                  >
+                  <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/70 flex items-center justify-between text-xs">
                     <span className="text-[10px] text-slate-400 flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                      <Sparkles className="w-3 h-3 text-slate-400" />
                       Delivered to Main Chat
                     </span>
 
                     {activeSubChatPopup.prototypeCode && (
                       <button
                         onClick={() => setSelectedMockupCode(activeSubChatPopup.prototypeCode)}
-                        className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white text-[11px] font-bold flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition"
+                        className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-black text-white dark:bg-white dark:hover:bg-slate-100 dark:text-slate-900 text-[11px] font-medium flex items-center gap-1.5 shadow-xs transition cursor-pointer"
                       >
-                        <ExternalLink className="w-3.5 h-3.5" />
+                        <ExternalLink className="w-3 h-3" />
                         <span>Live Preview</span>
                       </button>
                     )}
@@ -4199,6 +4937,8 @@ export default function App() {
               handleTestConnection={handleTestConnection}
               initialCategory={settingsCategory}
               agents={agents}
+              ruxtLeader={ruxtLeader}
+              onEditAgent={handleOpenEditAgent}
               tasks={tasks}
               marketplaceAgents={marketplaceAgents}
               onCommandLeader={(prompt) => {

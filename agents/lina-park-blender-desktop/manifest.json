@@ -1,0 +1,30 @@
+{
+  "format": "ruxt-agent-package/v1",
+  "slug": "lina-park-blender-desktop",
+  "name": "Lina Park (Visual Path)",
+  "role": "Blender 3D artist",
+  "description": "Lina Park with the same Blender studio experience, using the AI Server selected in RuXt Settings as the visible worker.",
+  "capabilities": [
+    "Blender modeling",
+    "Blender animation",
+    "Visible MCP computer-use handoff",
+    "Project history",
+    "Supervisor review"
+  ],
+  "allowSupervisors": true,
+  "ui": {
+    "type": "custom",
+    "entry": "ui/index.html",
+    "title": "Lina Park · Blender studio"
+  },
+  "agent": {
+    "name": "Lina Park (Visual Path)",
+    "role": "Blender 3D artist",
+    "avatar": "avatar.jpg"
+  },
+  "memory": {
+    "version": "2.1.0",
+    "file": "memory.json",
+    "autoLearn": true
+  }
+}

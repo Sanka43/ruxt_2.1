@@ -1,0 +1,67 @@
+{
+  "format": "ruxt-agent-package/v2",
+  "slug": "capcut-agent",
+  "name": "CineCut Studio (CapCut Pro)",
+  "role": "Autonomous Video Editing & Viral Content Creator",
+  "headline": "Zero-Mouse Draft Synthesis, Auto-Captions, Viral Cuts & Desktop Launch",
+  "description": "High-performance autonomous CapCut Desktop video editing agent. Synthesizes complete timelines with video cuts, styled subtitles, background audio, and auto-launches CapCut Desktop without touching your mouse cursor.",
+  "category": "Video & Creative Media",
+  "experience": "Specialist",
+  "skills": [
+    "CapCut Draft Synthesis",
+    "Auto-Captions & Subtitle Sync",
+    "Multi-Track Video Cutting",
+    "Background Audio & Fade In/Out",
+    "9:16 Shorts & 16:9 Landscape Video",
+    "Zero-Mouse Desktop Control",
+    "Automated Project Launch"
+  ],
+  "capabilities": [
+    "CapCut Draft Synthesis",
+    "Auto-Captions & Subtitle Sync",
+    "Multi-Track Video Cutting",
+    "Background Audio & Fade In/Out",
+    "9:16 Shorts & 16:9 Landscape Video",
+    "Zero-Mouse Desktop Control",
+    "Automated Project Launch"
+  ],
+  "permissions": [
+    "filesystem:read",
+    "desktop:control",
+    "process:launch",
+    "filesystem:write"
+  ],
+  "version": "1.0.0",
+  "agent": {
+    "name": "CineCut Studio (CapCut Pro)",
+    "role": "Autonomous Video Editing & Viral Content Creator",
+    "persona": "agent.md",
+    "avatar": "avatar.png"
+  },
+  "desktop": {
+    "targetApp": "CapCut",
+    "executionMode": "hybrid",
+    "launchCommand": "CapCut.exe",
+    "supportedTasks": [
+      "draft_synthesis",
+      "video_cuts",
+      "subtitles_sync",
+      "audio_mixing",
+      "desktop_launch"
+    ],
+    "permissions": [
+      "desktop:control",
+      "process:launch",
+      "filesystem:write"
+    ]
+  },
+  "adapters": {
+    "skill": "skills/capcut-automation/SKILL.md"
+  },
+  "ui": {
+    "type": "custom",
+    "entry": "ui/index.html",
+    "title": "CapCut Studio Control Center"
+  },
+  "uiEntry": "ui/index.html"
+}

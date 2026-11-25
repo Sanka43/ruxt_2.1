@@ -46,8 +46,14 @@
       "package.json"
     ],
     "asarUnpack": [
+      "dist/**/*",
+      "**/dist/**/*",
+      "public/**/*",
+      "**/public/**/*",
       "server/**/*",
       "**/server/**/*",
+      "agents/**/*",
+      "**/agents/**/*",
       "RuXt-AI-Vision-Desktop/**/*",
       "**/RuXt-AI-Vision-Desktop/**/*"
     ],
@@ -61,7 +67,8 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": true
     },
     "mac": {
       "target": [

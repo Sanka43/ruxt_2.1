@@ -12,6 +12,11 @@ import {
 } from '../services/desktopAutomation.js';
 import { startLiveDesktopExecution } from '../services/desktopOperator.js';
 import { startVisionDesktopExecution } from '../services/visionComputerUse.js';
+import { 
+  extractCapCutTaskContract, 
+  executeCapCutDraftGeneration 
+} from '../services/capcutAgentBridge.js';
+import { retrieveMemories, addMemory, formatMemoryContext } from '../services/agentMemory.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,7 +24,7 @@ const __dirname = path.dirname(__filename);
 const router = Router();
 const agentsDir = process.env.RUXT_AGENTS_DIR || path.resolve(__dirname, '../../agents');
 
-function getAgentPersonaContext(slug) {
+function getAgentPersonaContext(slug, userQuery = '') {
   if (!slug) return '';
   const agentFolder = path.join(agentsDir, slug);
   if (!fs.existsSync(agentFolder)) return '';
@@ -55,7 +60,17 @@ function getAgentPersonaContext(slug) {
     } catch (_) {}
   }
 
-  // 3. If agent is RuXt (Leader), inject active team context
+  // 3. Inject Universal Agent Memory (Internalized lessons, guidelines & preferences)
+  try {
+    const relevantMemories = retrieveMemories(slug, userQuery, { limit: 5 });
+    if (relevantMemories.length > 0) {
+      context += formatMemoryContext(relevantMemories);
+    }
+  } catch (memErr) {
+    console.warn(`[chat] Failed to inject memory context for ${slug}:`, memErr.message);
+  }
+
+  // 4. If agent is RuXt (Leader), inject active team context
   if (slug === 'ruxt') {
     try {
       const installedAgents = db.prepare('SELECT id, name, slug, role, description FROM agents WHERE slug != ?').all('ruxt');
@@ -141,10 +156,39 @@ router.delete('/sessions/:id', (req, res) => {
   }
 });
 
-// Send message & get agent response via selected multi-provider brain
-router.post('/sessions/:id/messages', async (req, res) => {
+// Active session abort controllers map for stop/cancellation
+const activeSessionAbortControllers = new Map();
+
+// Stop active generation for a session
+router.post('/sessions/:id/stop', (req, res) => {
   try {
     const { id: sessionId } = req.params;
+    const ctrl = activeSessionAbortControllers.get(sessionId);
+    if (ctrl) {
+      try {
+        ctrl.abort();
+      } catch (_) {}
+      activeSessionAbortControllers.delete(sessionId);
+    }
+    return res.json({ success: true, message: 'Generation stopped' });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Send message & get agent response via selected multi-provider brain
+router.post('/sessions/:id/messages', async (req, res) => {
+  const requestStartTime = Date.now();
+  const { id: sessionId } = req.params;
+
+  const abortCtrl = new AbortController();
+  activeSessionAbortControllers.set(sessionId, abortCtrl);
+  req.on('close', () => {
+    try { abortCtrl.abort(); } catch (_) {}
+    activeSessionAbortControllers.delete(sessionId);
+  });
+
+  try {
     const { content, providerOverride, modelOverride } = req.body;
     if (!content) return res.status(400).json({ error: 'Message content is required' });
 
@@ -176,30 +220,15 @@ router.post('/sessions/:id/messages', async (req, res) => {
     let agentRole = 'Engine Orchestrator';
     let agentSlug = session?.agent_id || 'ruxt';
 
-    const DEFAULT_SPECIALISTS_MAP = {
-      'julian-vance': { name: 'Julian Vance', role: 'Senior Frontend Web Developer' },
-      'maya-brooks': { name: 'Maya Brooks', role: 'Chief Financial Analyst' },
-      'noah-reed': { name: 'Noah Reed', role: 'Security & Cloud DevOps' },
-      'elena-voss-chess': { name: 'Elena Voss', role: 'Strategic Game Intelligence' },
-      'marcus-sterling': { name: 'Marcus Sterling', role: 'Enterprise Legal Counsel' },
-      'numbers': { name: 'Numbers', role: 'Quantitative Data Analyst' },
-      'ruxt': { name: 'RuXt', role: 'Team Leader & Engine Orchestrator' }
-    };
-
-    // 1. Check for @mention in content to dynamically route/consult specialist
+    // 1. Check for @mention in content to dynamically route/consult installed specialist
     let isMentioned = false;
     try {
       const allAgents = db.prepare('SELECT id, name, slug, role FROM agents').all();
-      for (const [sKey, sVal] of Object.entries(DEFAULT_SPECIALISTS_MAP)) {
-        if (!allAgents.some(a => a.slug === sKey)) {
-          allAgents.push({ id: sKey, name: sVal.name, slug: sKey, role: sVal.role });
-        }
-      }
-      // Sort descending by name length so multi-word names like "Julian Vance" match before shorter terms
-      allAgents.sort((a, b) => b.name.length - a.name.length);
+      // Sort descending by name length so multi-word names match before shorter terms
+      allAgents.sort((a, b) => (b.name || '').length - (a.name || '').length);
       for (const a of allAgents) {
-        const safeName = a.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const safeSlug = a.slug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const safeName = (a.name || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const safeSlug = (a.slug || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const namePattern = new RegExp(`@${safeName}\\b`, 'i');
         const slugPattern = new RegExp(`@${safeSlug}\\b`, 'i');
         if (namePattern.test(content) || slugPattern.test(content)) {
@@ -218,9 +247,6 @@ router.post('/sessions/:id/messages', async (req, res) => {
         agentName = agent.name;
         agentRole = agent.role;
         agentSlug = agent.slug;
-      } else if (DEFAULT_SPECIALISTS_MAP[agentSlug]) {
-        agentName = DEFAULT_SPECIALISTS_MAP[agentSlug].name;
-        agentRole = DEFAULT_SPECIALISTS_MAP[agentSlug].role;
       }
 
       if (agentSlug === 'ruxt') {
@@ -233,8 +259,8 @@ router.post('/sessions/:id/messages', async (req, res) => {
       }
     }
 
-    // Load full persona & skills definition
-    const personaContext = getAgentPersonaContext(agentSlug);
+    // Load full persona & skills definition with contextual memory injection
+    const personaContext = getAgentPersonaContext(agentSlug, content);
 
     let systemPrompt = `You are ${agentName}, working as ${agentRole} on the RuXt AI Platform.
 You embody the highest standard of your profession. Do not act like a generic chatbot. Speak with authenticity, professionalism, and purpose.
@@ -278,10 +304,22 @@ Format with clean GitHub Markdown, alerts, and tables where appropriate.
 ${systemPrompt}`;
     }
 
-    if (hasSlashLearn) {
+    if (hasSlashLearn && cleanPrompt) {
+      try {
+        addMemory(agentSlug, {
+          type: 'preference',
+          content: cleanPrompt,
+          importance: 1.0,
+          tags: ['user-guideline', 'instruction']
+        });
+      } catch (memErr) {
+        console.warn(`[chat] Could not persist learned memory for ${agentSlug}:`, memErr.message);
+      }
+
       systemPrompt = `--- WORKSPACE LEARNING DIRECTIVE ---
 The user explicitly invoked /learn to teach or memorize this guideline/skill: "${cleanPrompt}".
-Acknowledge the instruction clearly, state how you have internalized this into your operating principles, and explain how it will shape all future workflows in this workspace.
+This guideline has been PERMANENTLY recorded in your native agent memory (memory.json).
+Acknowledge the instruction clearly, confirm that you have saved it into your permanent operating memory, and explain how it will strictly shape all future tasks and workflows in this workspace.
 ------------------------------------
 
 ${systemPrompt}`;
@@ -331,9 +369,45 @@ ${systemPrompt}`;
 
     // 3. Strict & Safe Desktop Automation Intent Classification
     const isRuXtLeader = agentSlug === 'ruxt';
+    const isCapCutSpecialist = agentSlug === 'capcut-agent';
+
+    // 3.1 Autonomous CapCut Specialist Draft Execution
+    const isCapCutTask = isCapCutSpecialist || (
+      /\b(?:capcut|tiktok\s*reel|reel\s*project|video\s*clip|build\s*(?:the\s*)?draft|0930\.mp4)\b/i.test(msgLower) &&
+      /\b(?:video|clip|short|reel|tiktok|subtitles?|aspect\s*ratio|capcut)\b/i.test(msgLower)
+    );
+
+    if (isCapCutTask) {
+      try {
+        const contract = await extractCapCutTaskContract(content, settings);
+        if (contract && contract.videos && contract.videos.length > 0) {
+          const runRes = await executeCapCutDraftGeneration(contract);
+          usedProvider = 'CineCut Studio (.ruxt)';
+          usedModel = 'Zero-Mouse Draft Synthesizer';
+
+          const subListMd = (contract.subtitles || []).map((s, idx) => 
+            `  ${idx + 1}. "${s.text}" (${s.start}s – ${s.start + s.duration}s)`
+          ).join('\n');
+
+          systemPrompt = `--- CAPCUT DRAFT TASK COMPLETED ---
+You have successfully generated and launched a CapCut Desktop draft:
+- Project Title: "${contract.title}"
+- Aspect Ratio: ${contract.ratio} (Vertical TikTok/Reels Preset)
+- Primary Video Track: ${contract.videos[0].path} (Start: ${contract.videos[0].start}s, Duration: ${contract.videos[0].duration}s)
+${subListMd ? `- Subtitles (${contract.subtitles.length} tracks):\n${subListMd}` : ''}
+- Draft Location: %LOCALAPPDATA%\\CapCut\\User Data\\Projects\\com.lveditor.draft\\${contract.title}
+- Status: The CapCut Desktop timeline has been prepared and opened on the user's desktop screen.
+
+Respond dynamically to the user in their language (Sinhala/English). Acknowledge that the project draft has been synthesized and launched, summarize the key timeline specs, and explain what they will see on screen.
+-----------------------------------\n\n${systemPrompt}`;
+        }
+      } catch (capErr) {
+        console.warn('[CapCut Execution Warning]:', capErr.message);
+      }
+    }
 
     // Negative Filter: Never trigger desktop controller for software, web, coding, design or business development tasks
-    const isSoftwareOrWebTask = /\b(?:web\s*site|website|web\s*app|html|css|react|javascript|js|node|python|code|coding|api|database|db|sqlite|sql|sell|store|ecommerce|shop|design|figma|backend|frontend|system|component|mockup|ui|landing\s*page)\b/i.test(msgLower);
+    const isSoftwareOrWebTask = !isCapCutTask && /\b(?:web\s*site|website|web\s*app|html|css|react|javascript|js|node|python|code|coding|api|database|db|sqlite|sql|sell|store|ecommerce|shop|design|figma|backend|frontend|system|component|mockup|ui|landing\s*page)\b/i.test(msgLower);
 
     let isDesktopIntent = false;
     let targetDesktopGoal = cleanPrompt || rawContent;
@@ -363,57 +437,31 @@ ${systemPrompt}`;
           sessionId
         });
 
-        desktopAction = null;
+        desktopAction = {
+          jobId: job.id,
+          taskTitle: targetDesktopGoal,
+          appName: 'DESKTOP',
+          steps: job.steps
+        };
         usedProvider = 'RuXt Live Engine';
         usedModel = 'Autonomous Desktop Controller';
 
-        replyContent = 
-          `⚡ **RuXt Autonomous Live PC Control Activated!**\n\n` +
-          `මම ඔබේ පරිගණකයේ සැබෑ Screen එක direct access කරමින් කාර්යය (*${targetDesktopGoal}*) සජීවීව ආරම්භ කළා! 🚀\n\n` +
-          `• **Physical Execution:** Windows Application එක Screen එක ඉදිරියට (Foreground) පැමිණෙන අතර, Mouse Cursor එක සහ Keyboard Typing සජීවීව ඔබේ ඇස් ඉදිරිපිට ක්‍රියාත්මක වේ.\n` +
-          `• **Screen Status:** දැන් ඔබේ Physical Monitor Screen එක මත සජීවීව කාර්යය සිදුවන ආකාරය බලන්න!`;
+        systemPrompt = `--- AUTONOMOUS LIVE PC CONTROL STATUS ---
+An autonomous desktop execution job (Job ID: ${job.id}) has been launched for goal: "${targetDesktopGoal}".
+The desktop operator is actively controlling the application on the user's screen.
+Respond dynamically to the user in their language (Sinhala/English). Confirm that you have taken control of the screen to execute their goal, and explain what they will see happening live.
+-----------------------------------------\n\n${systemPrompt}`;
       } catch (deskErr) {
         console.warn('[Vision Operator Error]:', deskErr.message);
       }
     }
 
-    const isSessionInWorkflow = session?.workflow_state === 'CONSULTING' || session?.workflow_state === 'ASSIGNING';
-    const isExplicitWorkflowTrigger = msgLower.startsWith('🚗') || msgLower.startsWith('🛍️') || msgLower.startsWith('🌴') || msgLower.startsWith('⚡') || msgLower.startsWith('🚀') || msgLower.includes('write the files to disk immediately');
-
     const isSpecialistCollaborationIntent = isRuXtLeader && !isDesktopIntent && (
-      isSessionInWorkflow || 
-      isExplicitWorkflowTrigger ||
-      /\b(?:collaborat(?:e|ing|ion)|colabarate|board\s*room|boardroom|executive\s*board|squad|team)\b/i.test(msgLower) ||
-      /\b(?:julian(?:\s+vance)?|damon(?:\s+cole)?|noah(?:\s+reed)?|maya(?:\s+brooks)?|elena(?:\s+voss)?)\b/i.test(msgLower) ||
-      (isNaturalPlanning && /\b(?:build|create|develop|hadanna|storefront|website|web\s*app|saas|platform|system|portal|fleet|rental|shop)\b/i.test(msgLower))
+      /\b(?:collaborat(?:e|ing|ion)|colabarate|board\s*room|boardroom|executive\s*board|squad|team)\b/i.test(msgLower)
     );
 
-    // 1. Try structured orchestrated workflow first
-    if (!replyContent && isRuXtLeader && (isSessionInWorkflow || isExplicitWorkflowTrigger)) {
-      try {
-        const orchestrated = await handleOrchestratedConversation({
-          sessionId,
-          userMessage: content,
-          history,
-          settings
-        });
-
-        if (orchestrated && (orchestrated.dispatch || orchestrated.workflowState === 'CONSULTING' || orchestrated.workflowState === 'DELIVERED')) {
-          replyContent = orchestrated.content;
-          dispatchData = orchestrated.dispatch || null;
-          quickReplies = orchestrated.quickReplies || null;
-          workflowState = orchestrated.workflowState || null;
-          boardroomData = orchestrated.boardroom || null;
-          usedProvider = 'RuXt Orchestrator';
-          usedModel = 'Inter-Agent Consensus Engine';
-        }
-      } catch (orchErr) {
-        console.warn('[Orchestration Warning]:', orchErr.message);
-      }
-    }
-
-    // 2. Direct Board Room Deliberation when user initiates multi-agent task or collaboration
-    if (!replyContent && isSpecialistCollaborationIntent) {
+    // Direct Board Room Deliberation when user initiates multi-agent task or collaboration
+    if (isSpecialistCollaborationIntent) {
       try {
         const cleanTopic = cleanPrompt || content;
         const boardroomResult = await conductBoardroomMeeting({
@@ -432,28 +480,28 @@ ${systemPrompt}`;
           isLive: true
         };
 
-        replyContent = 
-          `🎯 **Executive Board Room Convened!** 🚀\n\n` +
-          `මම ඔබේ කාර්යය (*"${cleanTopic}"*) අපේ **Specialist Executive Board** (Julian Vance, Damon Cole, RuXt) වෙත ඉදිරිපත් කර Board Room සාකච්ඡාව සජීවීව ආරම්භ කළා!\n\n` +
-          `• **Lead Agent:** RuXt (Engine Orchestrator)\n` +
-          `• **Active Squad:** [Julian Vance (Frontend Lead), Damon Cole (Systems Architect), RuXt]\n` +
-          `• **Live Deliberation:** දකුණු පස ඇති Board Room panel එකෙන් කණ්ඩායමේ සජීවී සාකච්ඡාව (Live Deliberation) දැන් සජීවීව නැරඹිය හැක.\n` +
-          `• **Pipeline Tasks:** සම්මුතියට (${boardroomResult.decision}) පැමිණි පසු අදාළ ${boardroomResult.tasks.length} tasks ස්වයංක්‍රීයව Kanban පුවරුවට එක් කෙරේ.\n\n` +
-          `*(සජීවී සාකච්ඡාව නැරඹීමට හෝ කාර්යයන් පියවරෙන් පියවර ක්‍රියාත්මක කිරීමට Board Room panel එක විවෘත කරන්න!)*`;
+        const squadNames = (boardroomResult.squad || []).map(s => `${s.name} (${s.role})`).join(', ') || 'Julian Vance, Damon Cole, RuXt';
 
-        usedProvider = 'RuXt Orchestrator';
-        usedModel = 'Inter-Agent Consensus Engine';
+        systemPrompt = `--- EXECUTIVE BOARD ROOM CONVENED ---
+You convened the Specialist Executive Board for the project topic: "${cleanTopic}".
+- Active Squad: ${squadNames}
+- Consensus Reached: "${boardroomResult.decision}"
+- Kanban Tasks Created: ${boardroomResult.tasks.length} tasks scheduled on the Roadmap.
+
+Respond dynamically to the user as Chief of Staff in the language they used (Sinhala/English).
+Deliver an authentic executive briefing: summarize the consensus decision reached with the squad, explain the high-level roadmap, and mention that the live deliberation transcript and Kanban tasks are available in the Board Room panel on the right.
+-------------------------------------\n\n${systemPrompt}`;
       } catch (bErr) {
         console.warn('[Direct Boardroom Deliberation Error]:', bErr.message);
       }
     }
 
-    // Real-Time Dynamic AI Generation (Zero Hardcoding) if not handled by team dispatch
-    if (!replyContent) {
-      try {
-        const convTitle = session?.title || 'Chat';
-        const result = await generateAIResponse({
-          provider: activeProvider,
+    let result = null;
+    // 100% Real-Time Dynamic AI Generation (Zero Hardcoding) via activeProvider
+    try {
+      const convTitle = session?.title || 'Chat';
+      result = await generateAIResponse({
+        provider: activeProvider,
           model: activeModel,
           systemPrompt,
           userMessage: content,
@@ -480,7 +528,6 @@ ${systemPrompt}`;
 
         replyContent = `Hello! I am **${agentName}** (${agentRole}).\n\n*(Could not connect to the external AI Engine: ${genErr.message}. Please verify your API Key or host bridge in Settings.)*`;
       }
-    }
 
     // 2. Insert assistant response with metadata
     const assistantMsgId = randomUUID();
@@ -489,7 +536,8 @@ ${systemPrompt}`;
       quickReplies,
       workflowState,
       desktopAction,
-      boardroom: boardroomData
+      boardroom: boardroomData,
+      mcpEvents
     });
 
     db.prepare(`
@@ -497,7 +545,7 @@ ${systemPrompt}`;
       VALUES (?, ?, 'assistant', ?, ?)
     `).run(assistantMsgId, sessionId, replyContent, metadataStr);
 
-    // 3. Log activity
+    // 4. Log activity
     db.prepare(`
       INSERT INTO activity_logs (type, message, details)
       VALUES ('chat', ?, ?)
@@ -515,11 +563,14 @@ ${systemPrompt}`;
       workflowState,
       desktopAction,
       boardroom: boardroomData,
-      provider: usedProvider,
+provider: usedProvider,
       model: usedModel
     });
   } catch (err) {
+    console.error('[Chat API Error]:', err);
     res.status(500).json({ success: false, error: err.message });
+  } finally {
+    activeSessionAbortControllers.delete(sessionId);
   }
 });
 

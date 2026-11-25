@@ -1,0 +1,26 @@
+{
+  "format": "ruxt-agent-package/v1",
+  "slug": "rex-calder-codex",
+  "name": "Rex Calder",
+  "role": "Codex project coach",
+  "description": "Opens Codex, starts a new project folder, and gives you ready prompts to paste into Codex for the work.",
+  "capabilities": [
+    "Open Codex",
+    "Create project folders",
+    "Write Codex prompts"
+  ],
+  "ui": {
+    "type": "custom",
+    "entry": "ui/index.html",
+    "title": "Codex project desk"
+  },
+  "agent": {
+    "name": "Rex Calder",
+    "role": "Codex project coach"
+  },
+  "memory": {
+    "version": "2.1.0",
+    "file": "memory.json",
+    "autoLearn": true
+  }
+}

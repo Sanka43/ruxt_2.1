@@ -62,6 +62,7 @@ import {
 } from 'lucide-react';
 import ModelProvidersSection from './ModelProvidersSection.jsx';
 import ApiKeysSection from './ApiKeysSection.jsx';
+import AgentsSection from './AgentsSection.jsx';
 
 // Web Audio API Synthesizer for subtle haptic cues (zero external assets needed)
 export function playSound(type = 'click') {
@@ -127,6 +128,7 @@ export const CATEGORY_GROUPS = [
   {
     title: 'AI',
     items: [
+      { id: 'agents', name: 'Agents & Fleet', icon: Bot, badge: 'FLEET' },
       { id: 'models', name: 'Model providers', icon: Terminal, badge: 'READY' },
       { id: 'api_keys', name: 'API keys', icon: Key, badge: 'KEYS' },
       { id: 'guardrails', name: 'Guardrails & Cognition', icon: ShieldCheck, badge: 'ACTIVE' }
@@ -234,7 +236,12 @@ export default function SettingsView({
   tasks = [],
   marketplaceAgents = [],
   onCommandLeader,
-  onNavigateTab
+  onNavigateTab,
+  onEditAgent,
+  onUninstallAgent,
+  onRefreshAgents,
+  onOpenAgentStudio,
+  onImportPackage
 }) {
   const [activeCategory, setActiveCategory] = useState(initialCategory || 'overview');
   const [searchQuery, setSearchQuery] = useState('');
@@ -298,12 +305,35 @@ export default function SettingsView({
   const handleSaveApiKey = (keyName) => {
     const val = (localSettings[keyName] || '').trim();
     onSaveSetting(keyName, val);
+
+    // Auto-activate corresponding provider so user can chat immediately without manual configuration
+    let targetProvider = null;
+    if (keyName === 'gemini_api_key' && val.length > 5) targetProvider = 'gemini';
+    else if (keyName === 'openai_api_key' && val.length > 5) targetProvider = 'openai';
+    else if (keyName === 'anthropic_api_key' && val.length > 5) targetProvider = 'claude';
+    else if (keyName === 'xai_api_key' && val.length > 5) targetProvider = 'xai';
+    else if (keyName === 'openrouter_api_key' && val.length > 5) targetProvider = 'openrouter';
+
+    if (targetProvider) {
+      onSaveSetting('active_provider', targetProvider);
+      setLocalSettings(prev => ({ ...prev, [keyName]: val, active_provider: targetProvider }));
+    } else {
+      setLocalSettings(prev => ({ ...prev, [keyName]: val }));
+    }
+
     setSavedKeyFeedback(prev => ({ ...prev, [keyName]: true }));
     setTimeout(() => {
       setSavedKeyFeedback(prev => ({ ...prev, [keyName]: false }));
     }, 2500);
     fetchProvidersStatus();
-    if (showNotification) showNotification('API key saved successfully!', 'success');
+    if (showNotification) {
+      showNotification(
+        targetProvider 
+          ? `API key saved! Active provider switched to ${targetProvider.toUpperCase()}.` 
+          : 'API key saved successfully!', 
+        'success'
+      );
+    }
     if (localSettings.sound_haptics !== 'false') playSound('success');
   };
 
@@ -499,6 +529,27 @@ export default function SettingsView({
     }
   };
 
+  const handleFactoryReset = async () => {
+    if (!window.confirm('⚠️ FACTORY RESET WARNING: This will completely reset your workspace, clear all teams, delete non-core agents, and clear all chat history so RuXt starts 100% fresh. Proceed?')) return;
+    setPurging(true);
+    try {
+      const res = await fetch('/api/settings/factory-reset', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        localStorage.removeItem('ruxt_custom_teams');
+        showNotification(data.message, 'success');
+        if (localSettings.sound_haptics !== 'false') playSound('success');
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
+      }
+    } catch (e) {
+      showNotification('Reset failed: ' + e.message, 'error');
+    } finally {
+      setPurging(false);
+    }
+  };
+
   const handlePingBridge = async () => {
     setPingStatus('pinging');
     const start = performance.now();
@@ -534,13 +585,16 @@ export default function SettingsView({
 
   // RuXt Leader
   const ruxtLeader = useMemo(() => {
-    return agents.find(a => a.slug === 'ruxt') || {
-      name: 'RuXt',
-      avatar: '/ruxt-logo.png',
-      role: 'Team Leader & Engine Orchestrator',
-      description: 'Central control layer of RuXt Local Engine. Coordinates installed specialists (Julian Vance, Maya Brooks, Noah Reed), plans multi-stage projects, distributes tasks, and enforces deliverable quality.'
+    const base = agents.find(a => a.slug === 'ruxt') || {};
+    return {
+      ...base,
+      slug: 'ruxt',
+      name: localSettings?.team_leader_name || base.name || 'RuXt',
+      avatar: localSettings?.team_leader_avatar || base.avatar || '/agent-avatars/ruxt.png',
+      role: localSettings?.team_leader_role || base.role || 'Team Leader & Engine Orchestrator',
+      description: localSettings?.team_leader_bio || base.description || 'Central control layer of RuXt Local Engine. Coordinates installed specialists, plans multi-stage projects, distributes tasks, and enforces deliverable quality.'
     };
-  }, [agents]);
+  }, [agents, localSettings]);
 
   // Search indexing: filter items when search query is entered
   const isSearching = searchQuery.trim().length > 0;
@@ -682,7 +736,7 @@ export default function SettingsView({
                                 : 'bg-slate-800/80 border-slate-700 text-slate-400'
                             }`}
                           >
-                            {cat.badge}
+                            {cat.id === 'agents' && agents ? `${agents.length} AGENTS` : cat.badge}
                           </span>
                         )}
                       </button>
@@ -820,13 +874,20 @@ export default function SettingsView({
 
               {/* Real-time Workspace Stats Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800/90">
+                <div 
+                  onClick={() => {
+                    setActiveCategory('agents');
+                    if (localSettings.sound_haptics !== 'false') playSound('click');
+                  }}
+                  className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800/90 hover:border-indigo-500/50 cursor-pointer transition group"
+                  title="View Installed Agents Fleet"
+                >
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-medium text-slate-400">Team Specialists</span>
+                    <span className="text-xs font-medium text-slate-400 group-hover:text-indigo-300 transition">Team Specialists</span>
                     <Users className="w-4 h-4 text-indigo-400" />
                   </div>
                   <div className="text-2xl font-bold text-white">{agents.length || 3}</div>
-                  <p className="text-[10px] text-slate-500 mt-1">Installed local AI agents</p>
+                  <p className="text-[10px] text-slate-500 mt-1">Manage installed fleet →</p>
                 </div>
 
                 <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800/90">
@@ -1331,6 +1392,27 @@ export default function SettingsView({
           )}
 
           {/* ======================================================== */}
+          {/* CATEGORY: AGENTS & FLEET                                  */}
+          {/* ======================================================== */}
+          {(activeCategory === 'agents' || (isSearching && 'agents fleet specialist specialists installed talent persona prompt bot'.includes(searchQuery.toLowerCase()))) && (
+            <AgentsSection
+              agents={agents}
+              ruxtLeader={ruxtLeader}
+              onEditAgent={onEditAgent}
+              onUninstallAgent={onUninstallAgent}
+              onRefreshAgents={onRefreshAgents}
+              onOpenAgentStudio={onOpenAgentStudio}
+              onImportPackage={onImportPackage}
+              showNotification={showNotification}
+              localSettings={localSettings}
+              playSound={playSound}
+              onSaveSetting={onSaveSetting}
+              onSaveBatch={onSaveBatch}
+              handleChange={handleChange}
+            />
+          )}
+
+          {/* ======================================================== */}
           {/* CATEGORY 2: MODEL PROVIDERS & ACCOUNTS (Images 1 & 2 Match) */}
           {/* ======================================================== */}
           {(activeCategory === 'models' || (isSearching && 'models providers brain llm gemini claude openai antigravity acp'.includes(searchQuery.toLowerCase()))) && (
@@ -1347,6 +1429,8 @@ export default function SettingsView({
               setCliPathOpen={setCliPathOpen}
               onSaveSetting={onSaveSetting}
               showNotification={showNotification}
+              localSettings={localSettings}
+              handleChange={handleChange}
               onNavigateToApiKeys={(providerId) => {
                 setActiveCategory('api_keys');
                 if (localSettings.sound_haptics !== 'false') playSound('click');
@@ -1367,6 +1451,9 @@ export default function SettingsView({
               setShowApiKey={setShowApiKey}
               apiKeySearchQuery={apiKeySearchQuery}
               setApiKeySearchQuery={setApiKeySearchQuery}
+              handleTestConnection={handleTestConnection}
+              testingConnection={testingConnection}
+              connectionTestResult={connectionTestResult}
               onClose={onClose}
             />
           )}
@@ -2326,17 +2413,28 @@ export default function SettingsView({
                   <span className="text-xs font-bold">Storage Danger Zone</span>
                 </div>
                 <p className="text-[11px] text-slate-400">
-                  Purge all historical chat sessions and activity logs to free up storage. Your installed agents and API settings will NOT be touched.
+                  Manage your workspace state. Clear conversation history to free space, or reset to a factory clean workspace with zero leftover teams.
                 </p>
-                <button
-                  type="button"
-                  onClick={handlePurgeHistory}
-                  disabled={purging}
-                  className="px-4 py-2 rounded-xl bg-rose-600/80 hover:bg-rose-600 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 transition"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  {purging ? 'Purging...' : 'Clear All Chat History'}
-                </button>
+                <div className="flex flex-wrap items-center gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={handlePurgeHistory}
+                    disabled={purging}
+                    className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-300 hover:text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    {purging ? 'Purging...' : 'Clear Chat History'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleFactoryReset}
+                    disabled={purging}
+                    className="px-4 py-2 rounded-xl bg-rose-600/90 hover:bg-rose-600 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-sm"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    {purging ? 'Resetting...' : 'Reset to Factory Clean State'}
+                  </button>
+                </div>
               </div>
             </div>
           )}

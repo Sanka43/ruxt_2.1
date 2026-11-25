@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Nora Vale · Figma studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./studio.css" />
+</head>
+<body data-agent-id="nora-vale-figma" data-desktop-handoff="false">
+  <div class="app">
+    <div class="working-overlay" id="workingOverlay" hidden aria-live="polite" aria-busy="true">
+      <div class="working-card">
+        <img src="../avatar.svg" alt="Nora Vale" />
+        <strong>Nora Vale is working</strong>
+        <span id="workingOverlayStatus">I’m working in Figma — I’ll call you once it’s done.</span>
+      </div>
+    </div>
+    <header class="topbar">
+      <div class="person">
+        <img class="avatar" src="../avatar.svg" alt="Nora Vale" />
+        <div>
+          <strong>Nora Vale</strong>
+          <span id="presence">Active now · Waiting for you</span>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button type="button" class="ghost" id="navSupervisorBtn">Supervisor</button>
+        <button type="button" class="ghost" id="navChatsBtn">Chats</button>
+        <button type="button" class="primary" id="navNewBtn">＋ New chat</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="chat-pane" id="chatPane">
+        <div class="chat-head">
+          <div class="chat-meta">
+            <strong id="chatName">Pick a chat</strong>
+            <span id="chatType">Open a chat on the right to begin</span>
+          </div>
+        </div>
+
+        <div class="thread" id="thread" aria-live="polite">
+          <div class="empty-chat" id="emptyChat">
+            <h2>Message Nora</h2>
+            <p>Pick a chat on the right — she only opens Figma when you ask.</p>
+            <button type="button" class="primary empty-create" id="emptyCreateBtn">＋ Create a Figma project</button>
+          </div>
+        </div>
+
+        <div class="thinking-strip" id="thinkingStrip" hidden aria-live="polite">
+          <img src="../avatar.svg" alt="Nora Vale" />
+          <div><strong>Nora is thinking</strong><span id="thinkingText">I’m getting everything ready for you.</span></div>
+        </div>
+
+        <div class="typing" id="typing" hidden>
+          <img src="../avatar.jpg" alt="" />
+          <span><i></i><i></i><i></i></span>
+        </div>
+
+        <div class="composer-wrap">
+          <div class="chips" id="chips" hidden></div>
+          <form class="composer" id="composer">
+            <textarea id="input" rows="1" placeholder="Message Nora…" disabled></textarea>
+            <button type="submit" id="sendBtn" aria-label="Send" disabled>➤</button>
+            <button type="button" class="stop-work" id="stopWorkBtn" hidden>Stop work</button>
+          </form>
+        </div>
+      </section>
+
+      <aside class="side-pane">
+        <section class="page page-side" id="pageChats">
+
+          <div class="side-head">
+            <div>
+              <p class="eyebrow">CHATS</p>
+              <h1 id="chatListHeading">Latest Chats</h1>
+            </div>
+            <button type="button" class="primary" id="newChatHeroBtn">＋ New</button>
+          </div>
+
+          <div class="chat-list" id="chatList"></div>
+          <button type="button" class="all-chats-link" id="allChatsBtn">All Chats <span>→</span></button>
+          <div class="supervisor-card" id="supervisorCard">
+            <p class="eyebrow">SUPERVISOR</p>
+            <div id="supervisorSlot">
+              <strong>No supervisor</strong>
+              <p>Add any installed supervisor to rate Nora’s finished designs.</p>
+              <button type="button" class="soft" id="addSupervisorBtn">Add supervisor</button>
+            </div>
+          </div>
+
+          <section class="agent-widgets" id="agentWidgets" aria-label="Nora Vale widgets">
+            <div class="side-head widget-head"><div><p class="eyebrow">AGENT WIDGETS</p><h2>Workspace tools</h2></div></div>
+            <div class="widget-grid" id="widgetGrid"></div>
+          </section>
+
+          <h2 class="section-title">Figma starters</h2>
+          <div class="template-grid" id="templateGrid"></div>
+
+          <div class="stats" id="chatStats"></div>
+        </section>
+
+        <section class="page" id="pageSupervisor" hidden>
+          <div class="page-head">
+            <div>
+              <p class="eyebrow">ADD SUPERVISOR</p>
+              <h1>Who’s watching the work?</h1>
+              <p class="lede">Any installed supervisor agent can be assigned here. Nora allows supervisors because her package sets <code>allowSupervisors</code>.</p>
+            </div>
+            <button type="button" class="ghost" id="cancelSupervisorBtn">Back</button>
+          </div>
+          <div class="supervisor-pick" id="supervisorPick"></div>
+        </section>
+
+        <section class="page" id="pageNew" hidden>
+          <div class="page-head">
+            <div>
+              <p class="eyebrow">NEW CHAT</p>
+              <h1>What are we making?</h1>
+            <p class="lede">Name the chat and pick a starter. Nora hands the actual Figma work to your connected AI Server when you ask.</p>
+            </div>
+            <button type="button" class="ghost" id="cancelNewBtn">Back to chats</button>
+          </div>
+
+          <form class="new-form" id="newChatForm">
+            <label>Chat name
+              <input id="newName" maxlength="80" placeholder="e.g. Clay mug turntable" required />
+            </label>
+            <label>Optional note for later
+              <textarea id="newBrief" rows="3" placeholder="Optional — paste into chat when you’re ready to ask Nora"></textarea>
+            </label>
+            <fieldset>
+              <legend>Figma starter</legend>
+              <div class="template-pick" id="templatePick"></div>
+            </fieldset>
+            <div class="form-actions">
+              <button type="button" class="ghost" id="cancelNewBtn2">Cancel</button>
+              <button type="submit" class="primary">Open chat</button>
+            </div>
+          </form>
+        </section>
+      </aside>
+    </main>
+  </div>
+  <script src="./studio.js?v=20261119-task-recovery"></script>
+</body>
+</html>
+
+

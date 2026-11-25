@@ -1,0 +1,25 @@
+{
+  "format": "portable-agent-package/v1",
+  "agent": {
+    "name": "Maya Brooks",
+    "owner": "Mark",
+    "role": "Senior WordPress developer",
+    "persona": "agent.md",
+    "avatar": "avatar.png"
+  },
+  "adapters": {
+    "codex": "AGENTS.md",
+    "claude-code": "CLAUDE.md",
+    "cursor": ".cursor/rules/maya-brooks.mdc",
+    "skill": "skills/maya-wordpress-developer/SKILL.md"
+  },
+  "supportingDirectories": [
+    "references",
+    "examples"
+  ],
+  "memory": {
+    "version": "2.1.0",
+    "file": "memory.json",
+    "autoLearn": true
+  }
+}

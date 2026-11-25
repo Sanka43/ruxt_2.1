@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Rex Calder · Codex project coach</title>
+  <link rel="stylesheet" href="./codex.css" />
+</head>
+<body>
+  <div class="desk">
+    <header class="top">
+      <div>
+        <p class="eyebrow">CODEX PROJECT COACH</p>
+        <h1>Rex Calder</h1>
+        <p class="sub">Rex opens Codex, starts a new project, and gives your prompt to Codex right away.</p>
+      </div>
+      <span class="status" id="toolStatus">Checking Codex…</span>
+    </header>
+
+    <main class="layout">
+      <section class="panel wide">
+        <h2>Send a task to Codex</h2>
+        <p class="help">Enter the project name and the prompt you want Codex to run. Rex creates the project, opens Codex, and starts Codex with your prompt so work begins immediately.</p>
+        <label>Project name
+          <input id="projectName" maxlength="80" placeholder="e.g. landing-page-redesign" />
+        </label>
+        <label>Prompt for Codex
+          <textarea id="projectGoal" rows="6" placeholder="e.g. Build a simple portfolio site with a home page, about page, and contact form."></textarea>
+        </label>
+        <div class="row">
+          <button type="button" class="primary" id="launchCodexBtn">Open Codex with this prompt</button>
+          <button type="button" class="ghost" id="refreshStatusBtn">Refresh status</button>
+          <button type="button" class="ghost" id="openFolderBtn" disabled>Open project folder</button>
+        </div>
+        <p class="note" id="launchNote">Waiting for a prompt.</p>
+      </section>
+
+      <section class="panel wide">
+        <h2>What Rex will do</h2>
+        <ol class="steps" id="stepList">
+          <li>Create a new local project folder</li>
+          <li>Open Codex on that project</li>
+          <li>Start Codex with your prompt</li>
+        </ol>
+        <pre class="prompt-preview" id="promptPreview">Your prompt will appear here.</pre>
+      </section>
+    </main>
+  </div>
+  <script src="./codex.js"></script>
+</body>
+</html>

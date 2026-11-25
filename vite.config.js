@@ -6,6 +6,11 @@ export default defineConfig({
   base: './',
   server: {
     port: 5173,
+    watch: {
+      usePolling: true,
+      interval: 1000,
+      ignored: ['**/release/**', '**/dist/**', '**/data/**', '**/*.tmp', '**/public/**']
+    },
     proxy: {
       '/api': {
         target: 'http://localhost:1234',

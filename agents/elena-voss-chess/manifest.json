@@ -3,8 +3,12 @@
   "slug": "elena-voss-chess",
   "name": "Elena Voss",
   "role": "Chess teacher",
-  "description": "Teaches chess with a real playable board, move coaching, and calm practice games.",
-  "capabilities": ["Chess lessons", "Practice games", "Move coaching"],
+  "description": "A human chess coach — playable board plus chat that teaches like a real tutor.",
+  "capabilities": [
+    "Human coaching chat",
+    "Practice games",
+    "Hints & corrections"
+  ],
   "ui": {
     "type": "custom",
     "entry": "ui/index.html",
@@ -12,6 +16,12 @@
   },
   "agent": {
     "name": "Elena Voss",
-    "role": "Chess teacher"
+    "role": "Chess teacher",
+    "avatar": "avatar.jpg"
+  },
+  "memory": {
+    "version": "2.1.0",
+    "file": "memory.json",
+    "autoLearn": true
   }
 }

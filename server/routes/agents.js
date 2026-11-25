@@ -12,7 +12,96 @@ const router = Router();
 const isPackaged = __dirname.includes('app.asar');
 const writableDataDir = process.env.RUXT_DATA_DIR || (process.env.APPDATA ? path.join(process.env.APPDATA, 'RuXt', 'data') : path.resolve(__dirname, '../../data'));
 const userAgentsDir = path.join(writableDataDir, 'agents');
-const bundledAgentsDir = process.env.RUXT_AGENTS_DIR || path.resolve(__dirname, '../../agents');
+
+function resolveBundledAgentsDir() {
+  if (process.env.RUXT_AGENTS_DIR && fs.existsSync(process.env.RUXT_AGENTS_DIR)) {
+    return process.env.RUXT_AGENTS_DIR;
+  }
+  const candidates = [
+    path.resolve(__dirname, '../../agents'),
+    path.resolve(__dirname, '../../../agents'),
+    process.resourcesPath ? path.join(process.resourcesPath, 'app.asar.unpacked', 'agents') : null,
+    process.resourcesPath ? path.join(process.resourcesPath, 'agents') : null,
+    path.join(process.cwd(), 'agents')
+  ].filter(Boolean);
+
+  for (const cand of candidates) {
+    if (fs.existsSync(cand)) return cand;
+  }
+  return path.resolve(__dirname, '../../agents');
+}
+
+const bundledAgentsDir = resolveBundledAgentsDir();
+
+export function ensureRuxtLeaderSeeded() {
+  try {
+    const defaultManifest = {
+      format: "common-room-agent-package/v2",
+      frameworkId: "ruxt/orchestrator-leader/v1",
+      installationId: "ruxt-leader-core-001",
+      name: "RuXt",
+      role: "Team Leader & Engine Orchestrator",
+      description: "Central orchestrator and leader of RuXt Local Engine. Plans projects, coordinates specialist agents, manages task distribution, and ensures rigorous quality control.",
+      category: "Orchestration & Leadership",
+      experience: "Platform Core",
+      isLeader: true,
+      tags: [
+        "Team Coordinator",
+        "Project Architecture",
+        "Task Orchestration",
+        "Quality Assurance",
+        "Multi-Agent Workflow",
+        "RuXt Engine"
+      ],
+      agent: {
+        name: "RuXt",
+        role: "Team Leader & Engine Orchestrator",
+        persona: "agent.md",
+        avatar: "avatar.png"
+      },
+      adapters: {
+        skill: "skills/ruxt-orchestrator/SKILL.md"
+      },
+      version: "2.1.0",
+      readme: "README.md"
+    };
+
+    // 1. Seed into SQLite database if missing
+    const existing = db.prepare("SELECT id FROM agents WHERE slug = 'ruxt'").get();
+    if (!existing) {
+      db.prepare(`
+        INSERT INTO agents (id, name, slug, role, description, version, avatar, ui_entry, manifest)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        'ruxt-leader-core-001',
+        'RuXt',
+        'ruxt',
+        'Team Leader & Engine Orchestrator',
+        'Central orchestrator and leader of RuXt Local Engine. Plans projects, coordinates specialist agents, manages task distribution, and ensures rigorous quality control.',
+        '2.1.0',
+        '/agent-avatars/ruxt.png',
+        '',
+        JSON.stringify(defaultManifest)
+      );
+    }
+
+    // 2. Ensure ruxt files exist on disk in userAgentsDir or bundledAgentsDir
+    const userRuxtDir = path.join(userAgentsDir, 'ruxt');
+    const bundledRuxtDir = path.join(bundledAgentsDir, 'ruxt');
+
+    if (!fs.existsSync(userRuxtDir) && !fs.existsSync(bundledRuxtDir)) {
+      fs.mkdirSync(userRuxtDir, { recursive: true });
+      fs.writeFileSync(path.join(userRuxtDir, 'manifest.json'), JSON.stringify(defaultManifest, null, 2), 'utf8');
+      fs.writeFileSync(path.join(userRuxtDir, 'agent.md'), '# RuXt - Team Leader & Engine Orchestrator\n\nYou are RuXt, the central brain and lead orchestrator of the RuXt platform.\n', 'utf8');
+      fs.writeFileSync(path.join(userRuxtDir, 'README.md'), '# RuXt Team Leader\n\nCore orchestrator for RuXt Engine.\n', 'utf8');
+    }
+  } catch (err) {
+    console.warn('[RuXt] ensureRuxtLeaderSeeded error:', err.message);
+  }
+}
+
+// Guarantee RuXt exists upon initialization
+ensureRuxtLeaderSeeded();
 
 function getSafeJson(filePath) {
   try {
@@ -59,6 +148,10 @@ function scanAgents(force = false) {
       const slug = entry.name;
       // Skip internal packages and hidden directories
       if (slug === 'packages' || slug.startsWith('.') || seenSlugs.has(slug)) continue;
+
+      // In bundled application resources, ONLY the system leader 'ruxt' is auto-installed.
+      // Other specialist agents must be explicitly installed via Marketplace into userAgentsDir.
+      if (dir === bundledAgentsDir && slug !== 'ruxt') continue;
 
       const folderPath = path.join(dir, slug);
 
@@ -140,6 +233,30 @@ function scanAgents(force = false) {
     }
   }
 }
+
+  // Ensure RuXt Leader is always guaranteed to be present even on clean fresh PC
+  if (!agents.some(a => a.slug === 'ruxt')) {
+    ensureRuxtLeaderSeeded();
+    try {
+      const leaderRow = db.prepare("SELECT * FROM agents WHERE slug = 'ruxt'").get();
+      if (leaderRow) {
+        agents.push({
+          id: leaderRow.id,
+          slug: 'ruxt',
+          name: leaderRow.name,
+          role: leaderRow.role,
+          description: leaderRow.description,
+          version: leaderRow.version || '2.1.0',
+          avatar: leaderRow.avatar || '/agent-avatars/ruxt.png',
+          uiEntry: leaderRow.ui_entry || null,
+          isLeader: true,
+          manifest: (() => {
+            try { return JSON.parse(leaderRow.manifest); } catch (_) { return {}; }
+          })()
+        });
+      }
+    } catch (_) {}
+  }
 
   // Sort so Team Leader (RuXt) is always first
   agents.sort((a, b) => {

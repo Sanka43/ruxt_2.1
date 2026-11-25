@@ -14,6 +14,7 @@ import boardroomRoutes from './routes/boardroom.js';
 import desktopRoutes from './routes/desktop.js';
 import gscRoutes from './routes/gsc.js';
 import { startGscScheduler } from './services/gscScheduler.js';
+import { requestGuard, buildAllowedOriginCheck } from './services/requestGuard.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -23,7 +24,11 @@ const app = express();
 const PORT = process.env.PORT || 1234;
 
 // Middlewares
-app.use(cors());
+const isAllowedOrigin = buildAllowedOriginCheck(PORT);
+app.use(requestGuard(PORT));
+app.use(cors({
+  origin: (origin, cb) => cb(null, isAllowedOrigin(origin)),
+}));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
@@ -38,10 +43,26 @@ app.use('/api/boardroom', boardroomRoutes);
 app.use('/api/desktop', desktopRoutes);
 app.use('/api/gsc', gscRoutes);
 
-// Static assets
-const publicDir = path.join(appRootDir, 'public');
-const distDir = path.join(appRootDir, 'dist');
-const agentsDir = path.join(appRootDir, 'agents');
+// Static assets directory resolver (handles dev, production asar, and unpacked asar)
+function resolveStaticDir(relName) {
+  const candidates = [
+    path.join(appRootDir, relName),
+    path.join(__dirname, '..', relName),
+    path.join(__dirname, '../../', relName),
+    process.resourcesPath ? path.join(process.resourcesPath, 'app.asar.unpacked', relName) : null,
+    process.resourcesPath ? path.join(process.resourcesPath, 'app.asar', relName) : null,
+    process.resourcesPath ? path.join(process.resourcesPath, relName) : null,
+    path.join(process.cwd(), relName)
+  ].filter(Boolean);
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  return path.join(appRootDir, relName);
+}
+
+const publicDir = resolveStaticDir('public');
+const distDir = resolveStaticDir('dist');
+const agentsDir = resolveStaticDir('agents');
 
 const avatarDirs = [
   path.join(publicDir, 'agent-avatars'),

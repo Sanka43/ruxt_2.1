@@ -3,6 +3,30 @@ import fs from 'fs';
 import path from 'path';
 import Database from 'better-sqlite3';
 import { acpService } from './acpService.js';
+import { execCliSync } from './safeExec.js';
+import { mcpClientManager } from './mcpClientManager.js';
+
+const pathExts = (process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').map(e => e.toLowerCase());
+const pathDirs = (process.env.PATH || '').split(path.delimiter).filter(Boolean);
+
+export function findBinaryInPath(names) {
+  const targetNames = Array.isArray(names) ? names : [names];
+  for (const dir of pathDirs) {
+    for (const name of targetNames) {
+      const direct = path.join(dir, name);
+      if (fs.existsSync(direct)) {
+        try { if (!fs.statSync(direct).isDirectory()) return direct; } catch (_) {}
+      }
+      for (const ext of pathExts) {
+        const full = path.join(dir, name.toLowerCase().endsWith(ext) ? name : name + ext);
+        if (fs.existsSync(full)) {
+          try { if (!fs.statSync(full).isDirectory()) return full; } catch (_) {}
+        }
+      }
+    }
+  }
+  return null;
+}
 
 /**
  * Unified Multi-Provider AI Adapter for RuXt Local Engine
@@ -36,14 +60,26 @@ export function findAntigravityBinary(customPath = null) {
   }
   const localAppData = process.env.LOCALAPPDATA || '';
   const userProfile = process.env.USERPROFILE || '';
+  const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
+
+  // 1. Direct system PATH check (agy or antigravity)
+  const inPath = findBinaryInPath(['agy', 'antigravity']);
+  if (inPath) return inPath;
+
   const candidates = [
-    // 1. Antigravity IDE language server binary (standard Antigravity installation)
+    // 2. Standalone agy CLI installation
+    path.join(localAppData, 'agy', 'bin', 'agy.exe'),
+    // 3. Antigravity IDE language server binary (standard Antigravity installation)
     path.join(localAppData, 'Programs', 'Antigravity IDE', 'resources', 'app', 'extensions', 'antigravity', 'bin', 'language_server_windows_x64.exe'),
-    // 2. Antigravity IDE batch wrapper
+    // 4. Antigravity IDE main executable
+    path.join(localAppData, 'Programs', 'Antigravity IDE', 'Antigravity IDE.exe'),
+    path.join(programFiles, 'Antigravity IDE', 'Antigravity IDE.exe'),
+    // 5. Antigravity IDE batch wrapper
     path.join(userProfile, '.gemini', 'antigravity-ide', 'bin', 'agentapi.bat'),
-    // 3. Standalone Antigravity binary
+    // 6. Standalone Antigravity binary
     path.join(localAppData, 'Programs', 'antigravity', 'resources', 'bin', 'language_server.exe'),
-    // 4. OpenMausBot Antigravity runtime if installed
+    path.join(userProfile, '.gemini', 'antigravity', 'bin', 'language_server.exe'),
+    // 7. OpenMausBot Antigravity runtime if installed
     ...getOpenMausBotAntigravityCandidates(userProfile)
   ];
   return candidates.find(c => c && fs.existsSync(c)) || null;
@@ -194,7 +230,8 @@ export async function callAntigravityHost({
   conversationTitle = null,
   stealthHostMode = false,
   existingConversationId = null,
-  projectCwd = null
+  projectCwd = null,
+  agentSlug = null
 }) {
   const binary = findAntigravityBinary(customBinaryPath);
   if (!binary) {
@@ -243,7 +280,8 @@ export async function callAntigravityHost({
           images,
           model: normModel,
           customBinaryPath,
-          cwd: bridgeCwd
+          cwd: bridgeCwd,
+          agentSlug
         });
 
         if (acpResult && acpResult.content) {
@@ -259,7 +297,36 @@ export async function callAntigravityHost({
       }
     }
 
-    // If an existing conversation exists for this thread, verify its transcript exists first
+    // Modern Google Antigravity CLI fallback (agy.exe -p headless mode)
+    const isAgy = path.basename(binary).toLowerCase().startsWith('agy') && !path.basename(binary).toLowerCase().includes('server');
+    if (isAgy) {
+      try {
+        const args = ['-p', fullPrompt, '--output-format', 'text', '--dangerously-skip-permissions'];
+        if (normModel && normModel !== 'flash') {
+          const modelArg = normModel === 'pro' ? 'gemini-3.8-flash-high' : normModel === 'flash_lite' ? 'gemini-3.8-flash-low' : 'gemini-3.8-flash-medium';
+          args.push('--model', modelArg);
+        }
+        const out = execFileSync(binary, args, {
+          stdio: ['pipe', 'pipe', 'pipe'],
+          timeout: 45000,
+          cwd: bridgeCwd,
+          env: cleanEnv
+        }).toString().trim();
+
+        if (out) {
+          return {
+            content: out,
+            provider: 'Google Antigravity (Local Engine)',
+            model: displayModel,
+            conversationId: convId || 'cli-direct'
+          };
+        }
+      } catch (cliErr) {
+        console.warn('[Antigravity Direct CLI error]:', cliErr.message);
+      }
+    }
+
+    // Legacy IDE fallback: If an existing conversation exists for this thread, verify its transcript exists first
     if (convId) {
       const paths = getTranscriptPaths(convId);
       const convExists = paths.some(p => fs.existsSync(p));
@@ -270,11 +337,11 @@ export async function callAntigravityHost({
         minStepIndex = getLatestStepIndex(convId);
         try {
           if (binary.toLowerCase().endsWith('.bat')) {
-            execFileSync(binary, [
+            execCliSync(binary, [
               'send-message',
               convId,
               fullPrompt
-            ], { stdio: 'pipe', timeout: 35000, shell: true, cwd: bridgeCwd, env: cleanEnv });
+            ], { stdio: 'pipe', timeout: 35000, cwd: bridgeCwd, env: cleanEnv });
           } else {
             execFileSync(binary, [
               'agentapi',
@@ -307,12 +374,12 @@ export async function callAntigravityHost({
     if (!convId) {
       let out;
       if (binary.toLowerCase().endsWith('.bat')) {
-        out = execFileSync(binary, [
+        out = execCliSync(binary, [
           'new-conversation',
           `--title=${cleanTitle}`,
           `--model=${normModel}`,
           fullPrompt
-        ], { stdio: 'pipe', timeout: 35000, shell: true, cwd: bridgeCwd, env: cleanEnv }).toString();
+        ], { stdio: 'pipe', timeout: 35000, cwd: bridgeCwd, env: cleanEnv }).toString();
       } else {
         out = execFileSync(binary, [
           'agentapi',
@@ -375,6 +442,16 @@ export async function generateAIResponse({
     throw new Error(`${provider.toUpperCase()} engine is currently DISCONNECTED. Connect it in Settings to proceed.`);
   }
 
+  // Discover and launch MCP Tools for the active agent if defined
+  let mcpTools = [];
+  try {
+    if (agentSlug && agentSlug !== 'ruxt') {
+      mcpTools = await mcpClientManager.ensureAgentMcpTools(agentSlug);
+    }
+  } catch (mcpErr) {
+    console.warn(`[MCP Tool Discovery Note for ${agentSlug}]:`, mcpErr.message);
+  }
+
   // 1. Try Selected Primary Provider
   try {
     switch (provider) {
@@ -389,7 +466,8 @@ export async function generateAIResponse({
           conversationTitle: conversationTitle || settings.conversation_title,
           stealthHostMode: settings.stealth_host_mode === 'true',
           existingConversationId,
-          projectCwd
+          projectCwd,
+          agentSlug
         });
 
       case 'gemini':
@@ -400,7 +478,9 @@ export async function generateAIResponse({
             systemPrompt,
             userMessage,
             history,
-            images
+            images,
+            mcpTools,
+            agentSlug
           });
         }
         // If no cloud Gemini API key is configured and Antigravity is not paused, use Antigravity
@@ -425,7 +505,9 @@ export async function generateAIResponse({
           systemPrompt,
           userMessage,
           history,
-          images
+          images,
+          mcpTools,
+          agentSlug
         });
 
       case 'openai':
@@ -436,7 +518,9 @@ export async function generateAIResponse({
           systemPrompt,
           userMessage,
           history,
-          images
+          images,
+          mcpTools,
+          agentSlug
         });
 
       case 'ollama':
@@ -482,12 +566,60 @@ export async function generateAIResponse({
     }
   } catch (err) {
     primaryError = err;
-    console.warn(`[Primary Provider (${provider})]: ${err.message}. Trying Host Runtimes cascade...`);
+    console.warn(`[Primary Provider (${provider})]: ${err.message}. Trying available cascade fallbacks...`);
   }
 
-  // 2. Auto-Cascade to ANY Active & Running IDE / Tool Runtime on this PC (excluding paused/disconnected ones):
+  // 2. Auto-Cascade to ANY configured API keys or active local runtimes:
 
-  // Auto-Fallback A: Running Google Antigravity Host IDE Bridge
+  // Fallback A: Configured Google Gemini Cloud API Key
+  if (provider !== 'gemini' && settings.gemini_api_key && settings.gemini_api_key.trim().length > 15) {
+    try {
+      return await callGemini({
+        apiKey: settings.gemini_api_key,
+        model: settings.gemini_model || 'gemini-2.5-flash',
+        systemPrompt,
+        userMessage,
+        history,
+        images,
+        mcpTools,
+        agentSlug
+      });
+    } catch (_) {}
+  }
+
+  // Fallback B: Configured OpenAI Cloud API Key
+  if (provider !== 'openai' && settings.openai_api_key && settings.openai_api_key.trim().length > 5) {
+    try {
+      return await callOpenAI({
+        apiKey: settings.openai_api_key,
+        model: settings.openai_model || 'gpt-4o-mini',
+        systemPrompt,
+        userMessage,
+        history,
+        images,
+        mcpTools,
+        agentSlug
+      });
+    } catch (_) {}
+  }
+
+  // Fallback C: Configured Anthropic Claude API Key
+  if (provider !== 'claude' && settings.anthropic_api_key && settings.anthropic_api_key.trim().length > 5) {
+    try {
+      return await callClaude({
+        apiKey: settings.anthropic_api_key,
+        model: settings.claude_model || 'claude-3-7-sonnet-20250219',
+        systemPrompt,
+        userMessage,
+        history,
+        images,
+        mcpTools,
+        agentSlug
+      });
+    } catch (_) {}
+  }
+
+  // Fallback D: Running Google Antigravity Host IDE Bridge
   if (settings.engine_status_antigravity !== 'paused' && settings.engine_status_antigravity !== 'disconnected') {
     try {
       const agyRes = await callAntigravityHost({
@@ -501,7 +633,7 @@ export async function generateAIResponse({
     } catch (_) {}
   }
 
-  // Auto-Fallback B: Local Claude CLI
+  // Fallback E: Local Claude CLI
   if (settings.engine_status_claude !== 'paused' && settings.engine_status_claude !== 'disconnected') {
     try {
       const claudeRes = await callClaude({ apiKey: null, model: null, systemPrompt, userMessage, history });
@@ -509,7 +641,7 @@ export async function generateAIResponse({
     } catch (_) {}
   }
 
-  // Auto-Fallback C: Local Ollama
+  // Fallback F: Local Ollama
   if (settings.engine_status_ollama !== 'paused' && settings.engine_status_ollama !== 'disconnected') {
     try {
       const ollamaRes = await callOllama({
@@ -523,70 +655,141 @@ export async function generateAIResponse({
     } catch (_) {}
   }
 
-  // Auto-Fallback D: Autonomous RuXt Local Persona Engine (Guarantees zero blocking)
+  // Fallback G: Autonomous RuXt Local Persona Engine (Guarantees zero blocking)
   return generateAutonomousLocalReply({ systemPrompt, userMessage, history, provider, agentSlug, agentName, agentRole });
 }
 
 // 1. Google Gemini / Antigravity Bridge
-async function callGemini({ apiKey, model, systemPrompt, userMessage, history, images = [] }) {
+async function callGemini({ apiKey, model, systemPrompt, userMessage, history, images = [], mcpTools = [], agentSlug = null }) {
   // If API key is provided and valid, call Cloud API directly
   if (apiKey && apiKey.trim().length > 15) {
-    try {
-      const userParts = [{ text: userMessage }];
-      if (images && images.length > 0) {
-        for (const img of images) {
-          const rawBase64 = img.replace(/^data:image\/[a-z]+;base64,/, '');
-          userParts.push({
-            inlineData: {
-              mimeType: 'image/jpeg',
-              data: rawBase64
-            }
-          });
-        }
+    const userParts = [{ text: userMessage }];
+    if (images && images.length > 0) {
+      for (const img of images) {
+        const rawBase64 = img.replace(/^data:image\/[a-z]+;base64,/, '');
+        userParts.push({
+          inlineData: {
+            mimeType: 'image/jpeg',
+            data: rawBase64
+          }
+        });
       }
+    }
 
-      const geminiContents = [
-        ...history.map(m => ({
-          role: m.role === 'user' ? 'user' : 'model',
-          parts: [{ text: m.content }]
-        })),
-        {
+    const geminiContents = [
+      ...history.map(m => ({
+        role: m.role === 'user' ? 'user' : 'model',
+        parts: [{ text: m.content }]
+      })),
+      {
+        role: 'user',
+        parts: userParts
+      }
+    ];
+
+    let targetModel = model || 'gemini-2.5-flash';
+    if (['gemini-3.5-flash', 'flash', 'gemini-flash'].includes(targetModel)) {
+      targetModel = 'gemini-2.5-flash';
+    } else if (['pro', 'gemini-pro'].includes(targetModel)) {
+      targetModel = 'gemini-2.5-pro';
+    }
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${apiKey.trim()}`;
+    const payload = {
+      systemInstruction: {
+        parts: [{ text: systemPrompt }]
+      },
+      contents: geminiContents
+    };
+
+    if (mcpTools && mcpTools.length > 0) {
+      payload.tools = mcpClientManager.toGeminiTools(mcpTools);
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      const candidate = data.candidates?.[0];
+      const parts = candidate?.content?.parts || [];
+
+      // Check for MCP Function Call
+      const functionCallPart = parts.find(p => p.functionCall);
+      if (functionCallPart && agentSlug) {
+        const fc = functionCallPart.functionCall;
+        console.log(`[MCP Tool Calling (Gemini)]: Executing ${fc.name}...`, fc.args);
+        let toolResult = null;
+        try {
+          toolResult = await mcpClientManager.callTool(agentSlug, fc.name, fc.args || {});
+        } catch (callErr) {
+          toolResult = { error: callErr.message };
+        }
+
+        geminiContents.push(candidate.content);
+        geminiContents.push({
           role: 'user',
-          parts: userParts
-        }
-      ];
+          parts: [{
+            functionResponse: {
+              name: fc.name,
+              response: { content: toolResult }
+            }
+          }]
+        });
 
-      let targetModel = model || 'gemini-3.5-flash';
-      if (['gemini-2.0-flash', 'gemini-1.5-flash', 'flash', 'gemini-2.5-flash'].includes(targetModel)) {
-        targetModel = 'gemini-3.5-flash';
+        const followUpRes = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: systemPrompt }] },
+            contents: geminiContents
+          })
+        });
+
+        if (followUpRes.ok) {
+          const followUpData = await followUpRes.json();
+          const finalReply = followUpData.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (finalReply) {
+            return {
+              content: finalReply,
+              provider: 'Google Gemini Cloud (MCP Enabled)',
+              model: targetModel,
+              usage: followUpData.usageMetadata || null,
+              mcpEvents: [
+                {
+                  tool: fc.name,
+                  args: fc.args || {},
+                  result: toolResult
+                }
+              ]
+            };
+          }
+        }
       }
 
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${apiKey.trim()}`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          systemInstruction: {
-            parts: [{ text: systemPrompt }]
-          },
-          contents: geminiContents
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text) {
-          return {
-            content: text,
-            provider: 'Google Gemini Cloud',
-            model,
-            usage: data.usageMetadata || null
-          };
-        }
+      const text = parts[0]?.text;
+      if (text) {
+        return {
+          content: text,
+          provider: 'Google Gemini Cloud',
+          model: targetModel,
+          usage: data.usageMetadata || null
+        };
       }
-    } catch (e) {
-      console.warn('[Gemini Cloud API failed, trying Active Antigravity Host Bridge]:', e.message);
+    } else {
+      const errText = await response.text();
+      console.warn(`[Gemini Cloud API HTTP ${response.status}]:`, errText);
+      let errorMsg = `Google Gemini API error ${response.status}`;
+      try {
+        const errJson = JSON.parse(errText);
+        if (errJson.error?.message) errorMsg += `: ${errJson.error.message}`;
+      } catch (_) {
+        errorMsg += `: ${errText.slice(0, 180)}`;
+      }
+      throw new Error(errorMsg);
     }
   }
 
@@ -594,11 +797,11 @@ async function callGemini({ apiKey, model, systemPrompt, userMessage, history, i
   const hostResult = await callAntigravityHost({ systemPrompt, userMessage, history });
   if (hostResult) return hostResult;
 
-  throw new Error('Google Gemini API Key is not set and local Antigravity Host IDE was unreachable.');
+  throw new Error('Google Gemini API Key is not configured and local Antigravity engine was unreachable.');
 }
 
 // 2. Anthropic Claude (API or Claude CLI fallback)
-async function callClaude({ apiKey, model, systemPrompt, userMessage, history, images = [] }) {
+async function callClaude({ apiKey, model, systemPrompt, userMessage, history, images = [], mcpTools = [], agentSlug = null }) {
   // If API key is provided, use Anthropic Messages API
   if (apiKey && apiKey.trim().length > 5) {
     let userContent = userMessage;
@@ -625,6 +828,17 @@ async function callClaude({ apiKey, model, systemPrompt, userMessage, history, i
       { role: 'user', content: userContent }
     ];
 
+    const payload = {
+      model: model || 'claude-3-7-sonnet-20250219',
+      max_tokens: 4096,
+      system: systemPrompt,
+      messages
+    };
+
+    if (mcpTools && mcpTools.length > 0) {
+      payload.tools = mcpClientManager.toClaudeTools(mcpTools);
+    }
+
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -632,12 +846,7 @@ async function callClaude({ apiKey, model, systemPrompt, userMessage, history, i
         'x-api-key': apiKey.trim(),
         'anthropic-version': '2023-06-01'
       },
-      body: JSON.stringify({
-        model: model || 'claude-3-7-sonnet-20250219',
-        max_tokens: 4096,
-        system: systemPrompt,
-        messages
-      })
+      body: JSON.stringify(payload)
     });
 
     if (!response.ok) {
@@ -646,6 +855,64 @@ async function callClaude({ apiKey, model, systemPrompt, userMessage, history, i
     }
 
     const data = await response.json();
+    const toolUseBlock = data.content?.find(c => c.type === 'tool_use');
+
+    // Handle MCP Tool Call Loop
+    if (toolUseBlock && agentSlug) {
+      console.log(`[MCP Tool Calling (Claude)]: Executing ${toolUseBlock.name}...`, toolUseBlock.input);
+      let toolResult = null;
+      try {
+        toolResult = await mcpClientManager.callTool(agentSlug, toolUseBlock.name, toolUseBlock.input || {});
+      } catch (callErr) {
+        toolResult = { error: callErr.message };
+      }
+
+      messages.push({ role: 'assistant', content: data.content });
+      messages.push({
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: toolUseBlock.id,
+            content: JSON.stringify(toolResult)
+          }
+        ]
+      });
+
+      const followUpRes = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey.trim(),
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model: model || 'claude-3-7-sonnet-20250219',
+          max_tokens: 4096,
+          system: systemPrompt,
+          messages
+        })
+      });
+
+      if (followUpRes.ok) {
+        const followUpData = await followUpRes.json();
+        const content = followUpData.content?.map(c => c.text || '').join('\n') || '';
+        return {
+          content,
+          provider: 'Claude (MCP Enabled)',
+          model: model || 'claude-3-7-sonnet-20250219',
+          usage: followUpData.usage || null,
+          mcpEvents: [
+            {
+              tool: toolUseBlock.name,
+              args: toolUseBlock.input || {},
+              result: toolResult
+            }
+          ]
+        };
+      }
+    }
+
     const content = data.content?.map(c => c.text || '').join('\n') || '';
     return {
       content,
@@ -657,12 +924,12 @@ async function callClaude({ apiKey, model, systemPrompt, userMessage, history, i
 
   // Fallback: Check if local 'claude' CLI is installed in user environment
   try {
-    const check = execSync('where.exe claude', { stdio: 'pipe' }).toString();
-    if (check && check.trim()) {
-      // Execute via Claude Code CLI pipe
+    const check = execFileSync('where.exe', ['claude'], { stdio: 'pipe' }).toString();
+    const claudeBin = check.trim().split(/\r?\n/).filter(Boolean)[0];
+    if (claudeBin) {
+      // Prompt goes over stdin, never through a shell command line
       const promptCombined = `${systemPrompt}\n\nUser Question:\n${userMessage}`;
-      const escapedPrompt = promptCombined.replace(/"/g, '\\"');
-      const output = execSync(`claude -p "${escapedPrompt}"`, { stdio: 'pipe', encoding: 'utf8', timeout: 30000 });
+      const output = execCliSync(claudeBin, ['-p'], { input: promptCombined, stdio: 'pipe', encoding: 'utf8', timeout: 30000 });
       return {
         content: output.trim(),
         provider: 'claude-cli',
@@ -674,55 +941,201 @@ async function callClaude({ apiKey, model, systemPrompt, userMessage, history, i
   throw new Error('Anthropic Claude API Key not configured and local Claude CLI not found.');
 }
 
-// 3. OpenAI / Codex Bridge
-async function callOpenAI({ apiKey, model, systemPrompt, userMessage, history, images = [] }) {
-  if (!apiKey || apiKey.trim().length < 5) {
-    throw new Error('OpenAI / Codex API Key is missing or invalid.');
+function findCodexCliBinary(customPath = null) {
+  if (customPath && fs.existsSync(customPath)) return customPath;
+  const userProfile = process.env.USERPROFILE || '';
+  const localAppData = process.env.LOCALAPPDATA || '';
+  const roamingAppData = process.env.APPDATA || '';
+
+  const cliNames = ['codex', 'codex.cmd', 'openai', 'openai.cmd'];
+  for (const name of cliNames) {
+    try {
+      const stdout = execSync(`where.exe ${name}`, { stdio: 'pipe', timeout: 1200 }).toString();
+      const lines = stdout.trim().split(/\r?\n/).filter(Boolean);
+      if (lines.length > 0) return lines[0];
+    } catch (_) {}
   }
 
-  let userContent = userMessage;
-  if (images && images.length > 0) {
-    userContent = [{ type: 'text', text: userMessage }];
-    for (const img of images) {
-      const b64 = img.startsWith('data:') ? img : `data:image/jpeg;base64,${img}`;
-      userContent.push({
-        type: 'image_url',
-        image_url: { url: b64 }
-      });
+  const candidates = [
+    path.join(localAppData, 'Programs', 'codex', 'codex.exe'),
+    path.join(roamingAppData, 'npm', 'codex.cmd'),
+    path.join(userProfile, 'AppData', 'Roaming', 'npm', 'codex.cmd'),
+    path.join(localAppData, 'OpenAI', 'codex.exe')
+  ];
+  return candidates.find(c => c && fs.existsSync(c)) || null;
+}
+
+function getCodexCachedToken() {
+  const userProfile = process.env.USERPROFILE || '';
+  const candidates = [
+    path.join(userProfile, '.codex', 'auth.json'),
+    path.join(userProfile, '.codex', 'config.json'),
+    path.join(userProfile, '.openai', 'auth.json'),
+    path.join(userProfile, '.config', 'codex', 'auth.json')
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) {
+      try {
+        const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+        const token = data.access_token || data.token || data.apiKey || data.key || data.OPENAI_API_KEY;
+        if (token && typeof token === 'string' && token.trim().length > 10) {
+          return token.trim();
+        }
+      } catch (_) {}
+    }
+  }
+  return null;
+}
+
+// 3. OpenAI / Codex Bridge (Direct API Key + Codex CLI Auto-Bridge)
+async function callOpenAI({ apiKey, model, systemPrompt, userMessage, history, images = [], mcpTools = [], agentSlug = null }) {
+  let activeKey = apiKey;
+
+  // 1. If no direct API key is set, check local cached Codex/OpenAI CLI auth
+  if (!activeKey || activeKey.trim().length < 5) {
+    const cachedToken = getCodexCachedToken();
+    if (cachedToken) {
+      activeKey = cachedToken;
     }
   }
 
-  const messages = [
-    { role: 'system', content: systemPrompt },
-    ...history.map(m => ({ role: m.role, content: m.content })),
-    { role: 'user', content: userContent }
-  ];
+  // 2. If we have a key (from settings or cached CLI session), use the OpenAI HTTP API
+  if (activeKey && activeKey.trim().length > 5) {
+    let userContent = userMessage;
+    if (images && images.length > 0) {
+      userContent = [{ type: 'text', text: userMessage }];
+      for (const img of images) {
+        const b64 = img.startsWith('data:') ? img : `data:image/jpeg;base64,${img}`;
+        userContent.push({
+          type: 'image_url',
+          image_url: { url: b64 }
+        });
+      }
+    }
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey.trim()}`
-    },
-    body: JSON.stringify({
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      ...history.map(m => ({ role: m.role, content: m.content })),
+      { role: 'user', content: userContent }
+    ];
+
+    const payload = {
       model: model || 'gpt-4o-mini',
       messages
-    })
-  });
+    };
 
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`OpenAI API error (${response.status}): ${errText}`);
+    if (mcpTools && mcpTools.length > 0) {
+      payload.tools = mcpClientManager.toOpenAITools(mcpTools);
+    }
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${activeKey.trim()}`
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      const choice = data.choices?.[0];
+      const toolCalls = choice?.message?.tool_calls;
+
+      if (toolCalls && toolCalls.length > 0 && agentSlug) {
+        const mcpEvents = [];
+        messages.push(choice.message);
+
+        for (const tc of toolCalls) {
+          let parsedArgs = {};
+          try {
+            parsedArgs = JSON.parse(tc.function.arguments || '{}');
+          } catch (_) {}
+
+          console.log(`[MCP Tool Calling (OpenAI)]: Executing ${tc.function.name}...`, parsedArgs);
+          let toolResult = null;
+          try {
+            toolResult = await mcpClientManager.callTool(agentSlug, tc.function.name, parsedArgs);
+          } catch (callErr) {
+            toolResult = { error: callErr.message };
+          }
+
+          mcpEvents.push({
+            tool: tc.function.name,
+            args: parsedArgs,
+            result: toolResult
+          });
+
+          messages.push({
+            role: 'tool',
+            tool_call_id: tc.id,
+            content: JSON.stringify(toolResult)
+          });
+        }
+
+        const followUpRes = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${activeKey.trim()}`
+          },
+          body: JSON.stringify({
+            model: model || 'gpt-4o-mini',
+            messages
+          })
+        });
+
+        if (followUpRes.ok) {
+          const followUpData = await followUpRes.json();
+          const content = followUpData.choices?.[0]?.message?.content || '';
+          return {
+            content,
+            provider: 'OpenAI (MCP Enabled)',
+            model: model || 'gpt-4o-mini',
+            usage: followUpData.usage || null,
+            mcpEvents
+          };
+        }
+      }
+
+      const content = choice?.message?.content || '';
+      return {
+        content,
+        provider: 'openai',
+        model: model || 'gpt-4o-mini',
+        usage: data.usage || null
+      };
+    }
   }
 
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content || '';
-  return {
-    content,
-    provider: 'openai',
-    model,
-    usage: data.usage || null
-  };
+  // 3. Fallback: Execute via local 'codex' or 'openai' CLI subprocess
+  try {
+    const codexBin = findCodexCliBinary();
+    if (codexBin) {
+      const promptCombined = `${systemPrompt}\n\nUser Question:\n${userMessage}`;
+      const cliOpts = { stdio: 'pipe', encoding: 'utf8', timeout: 45000 };
+      let output = '';
+      try {
+        output = execCliSync(codexBin, ['exec', promptCombined], cliOpts);
+      } catch (_) {
+        try {
+          output = execCliSync(codexBin, ['-p', promptCombined], cliOpts);
+        } catch (_) {
+          output = execCliSync(codexBin, [promptCombined], cliOpts);
+        }
+      }
+
+      if (output && output.trim()) {
+        return {
+          content: output.trim(),
+          provider: 'codex-cli',
+          model: 'local-codex-cli'
+        };
+      }
+    }
+  } catch (_) {}
+
+  throw new Error('OpenAI / Codex API Key is missing and local Codex CLI is not authenticated.');
 }
 
 // 4. Local Offline Ollama (DeepSeek, Llama 3, Qwen)

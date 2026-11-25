@@ -34,6 +34,47 @@
   const moveList = document.getElementById("moveList");
   const coachText = document.getElementById("coachText");
   const turnBadge = document.getElementById("turnBadge");
+  const thread = document.getElementById("thread");
+  const typing = document.getElementById("typing");
+  const presence = document.getElementById("presence");
+
+  function escapeHtml(value) {
+    return String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function appendDay(label) {
+    if (!thread) return;
+    const el = document.createElement("div");
+    el.className = "day";
+    el.textContent = label;
+    thread.appendChild(el);
+  }
+
+  function appendElena(text, at = "Just now") {
+    if (!thread) return;
+    const row = document.createElement("div");
+    row.className = "row elena";
+    row.innerHTML = `<img src="../avatar.jpg" alt="" /><div class="bubble">${escapeHtml(text)}<span class="meta">${escapeHtml(at)}</span></div>`;
+    thread.appendChild(row);
+    thread.scrollTop = thread.scrollHeight;
+  }
+
+  function setTyping(on) {
+    if (typing) typing.hidden = !on;
+    if (presence) presence.textContent = on ? "Elena is typing…" : "Active now · Chess lesson";
+  }
+
+  function seedLessonChat() {
+    if (!thread || thread.dataset.seeded === "1") return;
+    thread.dataset.seeded = "1";
+    appendDay("Today");
+    appendElena("Hey — I’m Elena. You take White. Play naturally; I’ll only jump in when a move leaves you worse off.", "2:01 PM");
+    appendElena("If something’s hanging or you miss a clean capture, I’ll tell you what I’d have done instead — like a coach across the table.", "2:01 PM");
+  }
 
   function cloneBoard(board) {
     return board.map((row) => row.slice());
@@ -302,16 +343,16 @@
       const victimSq = squareName(victim.r, victim.c);
       const better = betterLine();
       if (better) {
-        return `You should have ${better.action}, because ${better.reason}. Your ${movedName} to ${dest} left your ${victimName} on ${victimSq} free to take.`;
+        return `Hold on — that leaves your ${victimName} on ${victimSq} free. I’d ${better.action}, because ${better.reason}.`;
       }
-      return `You should have protected your ${victimName} on ${victimSq}, because after ${movedName} from ${playedFrom} to ${dest} it is free for Black to take.`;
+      return `Careful — after ${movedName} ${playedFrom}→${dest}, your ${victimName} on ${victimSq} is hanging. Protect it before chasing ideas.`;
     }
 
     // Missed a clearly better idea.
     if (best && played.score < best.eval.score - 2.2) {
       const better = betterLine();
       if (better) {
-        return `You should have ${better.action}, because ${better.reason}. Moving your ${movedName} to ${dest} was weaker.`;
+        return `Hmm. ${movedName} to ${dest} is okay-ish, but I’d ${better.action} — ${better.reason}.`;
       }
     }
 
@@ -319,9 +360,9 @@
     if (played.score < -2) {
       const better = betterLine();
       if (better) {
-        return `You should have ${better.action}, because ${better.reason}. Your ${movedName} to ${dest} gives Black an easy reply.`;
+        return `I’d pause there. ${movedName} to ${dest} hands Black an easy reply. Better: ${better.action}, because ${better.reason}.`;
       }
-      return `You should have checked whether Black can take something for free after this, because your ${movedName} to ${dest} leaves you open.`;
+      return `I’d double-check free captures after ${movedName} to ${dest} — Black can punish that pretty quickly.`;
     }
 
     return null;
@@ -363,12 +404,18 @@
   }
 
   function showNote(message) {
-    coachText.textContent = message;
+    if (coachText) coachText.textContent = message;
+    appendElena(message);
   }
 
   function teachMistake(message) {
-    showNote(message);
-    speakMistake(message);
+    setTyping(true);
+    window.setTimeout(() => {
+      setTyping(false);
+      if (coachText) coachText.textContent = message;
+      appendElena(message);
+      speakMistake(message);
+    }, 550 + Math.min(900, String(message || "").length * 6));
   }
 
   function applyMove(from, to) {
@@ -389,7 +436,7 @@
     if (state.gameOver || state.turn !== "b") return;
     const moves = allLegalMoves(state.board, "b");
     if (!moves.length) {
-      endGame(inCheck(state.board, "b") ? "Checkmate. You win." : "Stalemate.");
+      endGame(inCheck(state.board, "b") ? "That’s mate — beautifully done. Rematch when you’re ready." : "Stalemate. Fair result.");
       return;
     }
     moves.sort((a, b) => {
@@ -417,14 +464,17 @@
     render();
     const replies = allLegalMoves(state.board, "w");
     if (!replies.length) {
-      endGame(inCheck(state.board, "w") ? "Checkmate. I win this one — new game when ready." : "Stalemate.");
+      endGame(inCheck(state.board, "w")
+        ? "That’s mate — nice fight though. Want a fresh board?"
+        : "Stalemate. Drawn. We can reset whenever you like.");
     }
   }
 
   function endGame(message) {
     state.gameOver = true;
     showNote(message);
-    turnBadge.textContent = "Game over";
+    if (turnBadge) turnBadge.textContent = "Game over";
+    if (presence) presence.textContent = "Active now · Chess lesson";
   }
 
   function updateStatus() {
@@ -487,7 +537,16 @@
         const mistake = explainMistake(state.board, from, to, capturedBefore);
         applyMove(from, to);
         if (mistake) teachMistake(mistake);
-        else showNote("Your move looks fine. Keep going.");
+        else {
+          const ok = pick([
+            "That looks solid. Keep going.",
+            "Nice — nothing hanging there.",
+            "Good. I’m curious what you’ll do next."
+          ]);
+          if (coachText) coachText.textContent = ok;
+          // Keep good moves quiet in chat so coaching stays light — only show sometimes.
+          if (Math.random() < 0.35) appendElena(ok);
+        }
         updateStatus();
         render();
         setTimeout(teacherMove, 380);
@@ -507,7 +566,7 @@
     render();
   }
 
-  function newGame() {
+  function newGame(opts = {}) {
     state.board = cloneBoard(START);
     state.turn = "w";
     state.selected = null;
@@ -515,7 +574,9 @@
     state.history = [];
     state.lastMove = null;
     state.gameOver = false;
-    showNote("You play White. If you make a mistake, I’ll say what you should have done and why.");
+    const line = "Alright — fresh board. You’re White. Play your game; I’ll only nudge you when something’s off.";
+    if (opts.announce !== false) showNote(line);
+    else if (coachText) coachText.textContent = line;
     updateStatus();
     render();
   }
@@ -528,15 +589,18 @@
     const to = squareName(best.move.to.r, best.move.to.c);
     const piece = NAMES[state.board[best.move.from.r][best.move.from.c]] || "piece";
     const reason = best.eval.captured
-      ? "that capture is the clearest gain right now"
-      : "that move keeps your position safer";
-    teachMistake(`You should move your ${piece} from ${from} to ${to}, because ${reason}.`);
+      ? "that capture is the cleanest gain right now"
+      : "it keeps your pieces safer and more useful";
+    teachMistake(`If it were me, I’d move the ${piece} ${from}→${to} — ${reason}.`);
     state.selected = best.move.from;
     state.legal = legalMoves(state.board, best.move.from);
     render();
   }
 
-  document.getElementById("newGameBtn").addEventListener("click", newGame);
-  document.getElementById("hintBtn").addEventListener("click", hint);
-  newGame();
+  document.getElementById("newGameBtn")?.addEventListener("click", () => newGame());
+  document.getElementById("hintBtn")?.addEventListener("click", hint);
+  document.getElementById("hintChip")?.addEventListener("click", hint);
+  document.getElementById("resetChip")?.addEventListener("click", () => newGame());
+  seedLessonChat();
+  newGame({ announce: false });
 })();

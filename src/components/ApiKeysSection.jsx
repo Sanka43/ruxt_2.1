@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Search, 
   X, 
@@ -8,9 +8,18 @@ import {
   ExternalLink, 
   Sparkles, 
   Zap, 
-  Layers 
+  Layers,
+  RefreshCw 
 } from 'lucide-react';
-import { GrokLogo } from './ModelProvidersSection.jsx';
+import { 
+  GrokLogo, 
+  AntigravityLogo, 
+  GeminiLogo, 
+  OpenAILogo, 
+  ClaudeLogo, 
+  OpenRouterLogo, 
+  DeepSeekLogo 
+} from './ProviderIcons.jsx';
 
 export default function ApiKeysSection({
   localSettings = {},
@@ -21,8 +30,13 @@ export default function ApiKeysSection({
   setShowApiKey,
   apiKeySearchQuery = '',
   setApiKeySearchQuery,
+  handleTestConnection,
+  testingConnection = false,
+  connectionTestResult = null,
   onClose
 }) {
+  const [testingAgy, setTestingAgy] = useState(false);
+  const [feedbackAgy, setFeedbackAgy] = useState(null);
   const matchesSearch = (terms) => {
     if (!apiKeySearchQuery || !apiKeySearchQuery.trim()) return true;
     const q = apiKeySearchQuery.toLowerCase();
@@ -70,13 +84,115 @@ export default function ApiKeysSection({
         </div>
 
         <div className="space-y-5">
+          {/* 0. Google Antigravity Local Engine (Zero API Key Required) */}
+          {matchesSearch(['antigravity', 'google', 'gemini', 'local', 'engine', 'zero api key', 'agy']) && (
+            <div className="p-4 rounded-2xl border border-indigo-500/30 bg-[#0d1322]/90 space-y-3.5 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <AntigravityLogo className="w-9 h-9" />
+                  <div>
+                    <h4 className="text-xs font-bold text-white flex items-center gap-2">
+                      <span>Google Antigravity Local Engine</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                        Zero API Key Required
+                      </span>
+                    </h4>
+                    <p className="text-[11px] text-slate-400">
+                      Connects automatically via local Google Account sign-in (or standalone agy CLI binary)
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[11px] font-semibold text-slate-300">
+                  Custom agy.exe / Antigravity Path (Optional if installed in standard location):
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={localSettings.antigravity_custom_path || ''}
+                    onChange={(e) => handleChange('antigravity_custom_path', e.target.value)}
+                    placeholder="e.g. C:\Users\<Username>\AppData\Local\agy\bin\agy.exe"
+                    className="flex-1 bg-[#0a0e1a] border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleSaveApiKey('antigravity_custom_path')}
+                    className="px-3.5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shrink-0 transition cursor-pointer"
+                  >
+                    Save Path
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-slate-800/80">
+                <span className="text-[11px] text-slate-400">
+                  Runs directly on this PC with high-speed ACP stdio JSON-RPC.
+                </span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    disabled={testingAgy}
+                    onClick={async () => {
+                      setTestingAgy(true);
+                      setFeedbackAgy(null);
+                      try {
+                        const res = await fetch('/api/settings/antigravity/test', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ customPath: localSettings.antigravity_custom_path })
+                        });
+                        const data = await res.json();
+                        setFeedbackAgy({
+                          type: data.success ? 'success' : 'error',
+                          text: data.success ? data.message : `Connection failed: ${data.error}`
+                        });
+                      } catch (e) {
+                        setFeedbackAgy({ type: 'error', text: `Test error: ${e.message}` });
+                      } finally {
+                        setTestingAgy(false);
+                      }
+                    }}
+                    className="px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold transition cursor-pointer"
+                  >
+                    {testingAgy ? 'Testing...' : 'Test Local Engine'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const res = await fetch('/api/settings/antigravity/login', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ customPath: localSettings.antigravity_custom_path })
+                        });
+                        const data = await res.json();
+                        setFeedbackAgy({ type: 'info', text: data.message || 'Login window opened.' });
+                      } catch (e) {
+                        setFeedbackAgy({ type: 'error', text: `Login error: ${e.message}` });
+                      }
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition cursor-pointer"
+                  >
+                    Sign in with Google
+                  </button>
+                </div>
+              </div>
+
+              {feedbackAgy && (
+                <div className={`p-2.5 rounded-xl border text-xs ${feedbackAgy.type === 'success' ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300' : feedbackAgy.type === 'info' ? 'bg-blue-950/40 border-blue-500/30 text-blue-300' : 'bg-rose-950/40 border-rose-500/30 text-rose-300'}`}>
+                  {feedbackAgy.text}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* 1. Google Gemini API Key */}
           {matchesSearch(['gemini', 'google', 'cloud']) && (
             <div className="p-4 rounded-2xl border border-slate-800 bg-[#0d1322]/80 space-y-3">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
-                  <Zap className="w-4 h-4" />
-                </div>
+                <GeminiLogo className="w-9 h-9" />
                 <div>
                   <h4 className="text-xs font-bold text-white">Google Gemini API key</h4>
                   <p className="text-[11px] text-slate-400">Gemini 2.0 Flash, Flash-Lite, and Pro models</p>
@@ -102,6 +218,7 @@ export default function ApiKeysSection({
                 </div>
 
                 <button
+                  type="button"
                   onClick={() => handleSaveApiKey('gemini_api_key')}
                   className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold shrink-0 transition flex items-center gap-1.5 cursor-pointer"
                 >
@@ -114,6 +231,19 @@ export default function ApiKeysSection({
                     <span>Save</span>
                   )}
                 </button>
+
+                {handleTestConnection && (
+                  <button
+                    type="button"
+                    onClick={() => handleTestConnection('gemini')}
+                    disabled={testingConnection}
+                    className="px-3.5 py-2.5 rounded-xl border border-slate-700 bg-slate-800/40 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold shrink-0 transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    title="Test Gemini API connection"
+                  >
+                    {testingConnection ? <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-400" /> : <Zap className="w-3.5 h-3.5 text-blue-400" />}
+                    <span>Test</span>
+                  </button>
+                )}
               </div>
 
               <div className="flex items-center justify-between text-[11px] pt-1">
@@ -135,9 +265,7 @@ export default function ApiKeysSection({
           {matchesSearch(['openai', 'gpt', 'codex', 'chatgpt']) && (
             <div className="p-4 rounded-2xl border border-slate-800 bg-[#0d1322]/80 space-y-3">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
-                  <Sparkles className="w-4 h-4" />
-                </div>
+                <OpenAILogo className="w-9 h-9" />
                 <div>
                   <h4 className="text-xs font-bold text-white">OpenAI API key</h4>
                   <p className="text-[11px] text-slate-400">OpenAI models, reply readout and live calls</p>
@@ -163,6 +291,7 @@ export default function ApiKeysSection({
                 </div>
 
                 <button
+                  type="button"
                   onClick={() => handleSaveApiKey('openai_api_key')}
                   className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold shrink-0 transition flex items-center gap-1.5 cursor-pointer"
                 >
@@ -175,6 +304,19 @@ export default function ApiKeysSection({
                     <span>Save</span>
                   )}
                 </button>
+
+                {handleTestConnection && (
+                  <button
+                    type="button"
+                    onClick={() => handleTestConnection('openai')}
+                    disabled={testingConnection}
+                    className="px-3.5 py-2.5 rounded-xl border border-slate-700 bg-slate-800/40 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold shrink-0 transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    title="Test OpenAI API connection"
+                  >
+                    {testingConnection ? <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-400" /> : <Sparkles className="w-3.5 h-3.5 text-emerald-400" />}
+                    <span>Test</span>
+                  </button>
+                )}
               </div>
 
               <div className="flex items-center justify-between text-[11px] pt-1">
@@ -196,9 +338,7 @@ export default function ApiKeysSection({
           {matchesSearch(['anthropic', 'claude', 'sonnet', 'haiku']) && (
             <div className="p-4 rounded-2xl border border-slate-800 bg-[#0d1322]/80 space-y-3">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 font-black text-base">
-                  ✱
-                </div>
+                <ClaudeLogo className="w-9 h-9" />
                 <div>
                   <h4 className="text-xs font-bold text-white">Anthropic API key</h4>
                   <p className="text-[11px] text-slate-400">Claude models, billed per token</p>
@@ -224,6 +364,7 @@ export default function ApiKeysSection({
                 </div>
 
                 <button
+                  type="button"
                   onClick={() => handleSaveApiKey('anthropic_api_key')}
                   className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold shrink-0 transition flex items-center gap-1.5 cursor-pointer"
                 >
@@ -236,6 +377,19 @@ export default function ApiKeysSection({
                     <span>Save</span>
                   )}
                 </button>
+
+                {handleTestConnection && (
+                  <button
+                    type="button"
+                    onClick={() => handleTestConnection('claude')}
+                    disabled={testingConnection}
+                    className="px-3.5 py-2.5 rounded-xl border border-slate-700 bg-slate-800/40 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold shrink-0 transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    title="Test Claude API connection"
+                  >
+                    {testingConnection ? <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-400" /> : <Zap className="w-3.5 h-3.5 text-amber-400" />}
+                    <span>Test</span>
+                  </button>
+                )}
               </div>
 
               <div className="flex items-center justify-between text-[11px] pt-1">
@@ -316,9 +470,7 @@ export default function ApiKeysSection({
           {matchesSearch(['openrouter', 'router', 'multi']) && (
             <div className="p-4 rounded-2xl border border-slate-800 bg-[#0d1322]/80 space-y-3">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
-                  <Layers className="w-4 h-4" />
-                </div>
+                <OpenRouterLogo className="w-9 h-9" />
                 <div>
                   <h4 className="text-xs font-bold text-white">OpenRouter API key</h4>
                   <p className="text-[11px] text-slate-400">Hundreds of models through one key</p>

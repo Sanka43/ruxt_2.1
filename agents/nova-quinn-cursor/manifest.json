@@ -1,0 +1,27 @@
+{
+  "format": "ruxt-agent-package/v1",
+  "slug": "nova-quinn-cursor",
+  "name": "Nova Quinn",
+  "role": "Cursor coding twin",
+  "description": "Works like Cursor Agent inside RuXt — opens Cursor, runs a coding prompt on a project, and streams progress.",
+  "capabilities": [
+    "Open Cursor",
+    "Create coding projects",
+    "Run Cursor Agent prompts",
+    "Plan / Ask / Agent modes"
+  ],
+  "ui": {
+    "type": "custom",
+    "entry": "ui/index.html",
+    "title": "Cursor twin desk"
+  },
+  "agent": {
+    "name": "Nova Quinn",
+    "role": "Cursor coding twin"
+  },
+  "memory": {
+    "version": "2.1.0",
+    "file": "memory.json",
+    "autoLearn": true
+  }
+}

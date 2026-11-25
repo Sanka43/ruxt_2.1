@@ -16,5 +16,10 @@
   },
   "workLog": "WORK_LOG.md",
   "connection": "common-room.json",
-  "readme": "README.md"
+  "readme": "README.md",
+  "memory": {
+    "version": "2.1.0",
+    "file": "memory.json",
+    "autoLearn": true
+  }
 }

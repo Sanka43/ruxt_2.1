@@ -16,7 +16,7 @@ import {
   Check
 } from 'lucide-react';
 
-export default function DesktopLiveOperatorCard({ desktopAction }) {
+export default function DesktopLiveOperatorCard({ desktopAction, headless = false }) {
   const [jobState, setJobState] = useState(desktopAction || {});
   const [logs, setLogs] = useState([]);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
@@ -263,6 +263,11 @@ export default function DesktopLiveOperatorCard({ desktopAction }) {
       setTimeout(() => setCopied(false), 2000);
     }
   };
+
+  if (headless) {
+    // Dynamic island card is rendered on the desktop screen via Electron overlay
+    return null;
+  }
 
   return (
     <div className="mt-4 rounded-2xl bg-white dark:bg-slate-900/90 border border-cyan-500/30 overflow-hidden shadow-md dark:shadow-2xl backdrop-blur-md">

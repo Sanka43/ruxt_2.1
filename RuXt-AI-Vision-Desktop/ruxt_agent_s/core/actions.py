@@ -76,7 +76,8 @@ class DesktopActionExecutor:
         screen_size: Tuple[int, int],
         move_duration: float = 0.20,
         action_delay: float = 0.10,
-        type_via_clipboard: bool = True,
+        type_via_clipboard: bool = False,
+        typing_interval: float = 0.025,
         failsafe: bool = True,
         cursor_mode: str = "direct",
         independent_cursor: bool = False,
@@ -86,6 +87,7 @@ class DesktopActionExecutor:
         self.move_duration = move_duration
         self.action_delay = action_delay
         self.type_via_clipboard = type_via_clipboard
+        self.typing_interval = typing_interval
         if cursor_mode == "ghost" or independent_cursor:
             self.cursor_mode = "ghost"
             self.independent_cursor = True
@@ -339,7 +341,7 @@ class DesktopActionExecutor:
 
         self.draw_stroke(pts, duration=duration)
 
-    def type_text(self, text: str, clear_existing: bool = False):
+    def type_text(self, text: str, clear_existing: bool = False, typing_interval: Optional[float] = None):
         logger.info(f"Typing text (len={len(text)}): {text[:30]}...")
         if clear_existing:
             pyautogui.hotkey("ctrl", "a")
@@ -347,12 +349,32 @@ class DesktopActionExecutor:
             pyautogui.press("backspace")
             time.sleep(0.05)
 
+        interval = typing_interval if typing_interval is not None else getattr(self, "typing_interval", 0.025)
+
         if self.type_via_clipboard:
             pyperclip.copy(text)
             time.sleep(0.05)
             pyautogui.hotkey("ctrl", "v")
         else:
-            pyautogui.write(text, interval=0.02)
+            # Sequential letter-by-letter typing with authentic human pacing
+            for ch in text:
+                if ch == "\n":
+                    pyautogui.press("enter")
+                elif ch == "\t":
+                    pyautogui.press("tab")
+                else:
+                    try:
+                        pyautogui.write(ch)
+                    except Exception:
+                        try:
+                            # Single-character fallback for complex Unicode symbols
+                            pyperclip.copy(ch)
+                            pyautogui.hotkey("ctrl", "v")
+                        except Exception:
+                            pass
+                if interval > 0:
+                    time.sleep(interval)
+
         time.sleep(self.action_delay)
 
     def press_key(self, key: str, presses: int = 1):
@@ -427,21 +449,56 @@ class DesktopActionExecutor:
         return False
 
     def focus_window(self, title_query: str) -> bool:
-        """Finds and activates a window matching title_query."""
-        if not self._uia_desktop:
+        """Finds and activates a window matching title_query, restoring if minimized."""
+        q_lower = title_query.lower().strip()
+        if not q_lower:
             return False
-        try:
-            q_lower = title_query.lower().strip()
-            windows = self._uia_desktop.windows(visible_only=True)
-            for win in windows:
-                w_title = (win.window_text() or "").lower()
-                if q_lower in w_title:
-                    logger.info(f"Focusing window: '{win.window_text()}'")
-                    win.set_focus()
+
+        # 1. Win32 Native HWND Focus with SW_RESTORE (Ultra-fast & reliable)
+        if platform.system() == "Windows":
+            try:
+                import win32gui
+                import win32con
+                target_hwnd = None
+
+                def enum_cb(hwnd, _):
+                    nonlocal target_hwnd
+                    if win32gui.IsWindowVisible(hwnd):
+                        w_title = (win32gui.GetWindowText(hwnd) or "").lower()
+                        if q_lower in w_title:
+                            target_hwnd = hwnd
+                            return False
+                    return True
+
+                try:
+                    win32gui.EnumWindows(enum_cb, None)
+                except Exception:
+                    pass
+
+                if target_hwnd:
+                    logger.info(f"Win32 focusing window HWND {target_hwnd} for query '{title_query}'")
+                    win32gui.ShowWindow(target_hwnd, win32con.SW_RESTORE)
+                    time.sleep(0.05)
+                    win32gui.SetForegroundWindow(target_hwnd)
                     time.sleep(self.action_delay)
                     return True
-        except Exception as e:
-            logger.warning(f"focus_window error: {e}")
+            except Exception as w32_err:
+                logger.warning(f"Win32 focus_window fallback note: {w32_err}")
+
+        # 2. PyWinAuto UIA fallback
+        if self._uia_desktop:
+            try:
+                windows = self._uia_desktop.windows(visible_only=True)
+                for win in windows:
+                    w_title = (win.window_text() or "").lower()
+                    if q_lower in w_title:
+                        logger.info(f"PyWinAuto focusing window: '{win.window_text()}'")
+                        win.set_focus()
+                        time.sleep(self.action_delay)
+                        return True
+            except Exception as e:
+                logger.warning(f"PyWinAuto focus_window error: {e}")
+
         return False
 
     def maximize_window(self, title_query: str = "") -> bool:

@@ -1,0 +1,44 @@
+#!/usr/bin/env node
+/* Nora-only Figma canvas bridge. The Figma plugin polls this local queue. */
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const port = Number(process.env.RUXT_FIGMA_BRIDGE_PORT || 17451);
+let connectedAt = 0;
+let lastCanvasUpdate = 0;
+const receipts = new Map();
+const queue = [];
+const seenMarker = path.join(__dirname, '.plugin-seen');
+const json = (res, status, body) => { res.writeHead(status, {'content-type':'application/json','cache-control':'no-store','access-control-allow-origin':'*'}); res.end(JSON.stringify(body)); };
+const server = http.createServer((req, res) => {
+  if (req.method === 'OPTIONS') return json(res, 204, {});
+  if (req.url === '/health' && req.method === 'GET') return json(res, 200, { ok:true, agent:'nora-vale-figma', port, pluginConnected: Boolean(connectedAt && Date.now()-connectedAt < 30000), connectedAt: connectedAt || null, canvasUpdatedAt: lastCanvasUpdate || null, queued: queue.length });
+  if (req.url === '/poll' && req.method === 'GET') {
+    connectedAt = Date.now();
+    const commands = queue.splice(0, 20).filter(command => !command.expiresAt || command.expiresAt > Date.now());
+    try { fs.writeFileSync(seenMarker, String(connectedAt)); } catch (_) {}
+    return json(res, 200, { ok:true, commands });
+  }
+  if (req.url === '/command' && req.method === 'POST') {
+    let raw=''; req.on('data', c => { raw += c; if (raw.length > 256000) req.destroy(); });
+    req.on('end', () => { try { const body=JSON.parse(raw||'{}'); if (!body.type) throw Error('type is required'); const id=`figma_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,7)}`; queue.push({...body,id,expiresAt:body.type === "composition" ? Date.now()+10000 : null}); json(res,202,{ok:true,id}); } catch(e) { json(res,400,{ok:false,error:e.message}); } }); return;
+  }
+  if (req.url === '/complete' && req.method === 'POST') {
+    let raw = '';
+    req.on('data', chunk => { raw += chunk; if (raw.length > 8192) req.destroy(); });
+    req.on('end', () => {
+      let receipt;
+      try { receipt = JSON.parse(raw); } catch { return json(res,400,{ok:false}); }
+      if (!receipt.frameId || !Array.isArray(receipt.nodeIds || receipt.ellipses) || !(receipt.nodeIds || receipt.ellipses).length) return json(res,400,{ok:false});
+      receipts.set(receipt.id, receipt);
+      if (receipts.size > 100) receipts.delete(receipts.keys().next().value);
+      lastCanvasUpdate = Date.now();
+      json(res,200,{ok:true});
+    });
+    return;
+  }
+  if (req.method === 'GET' && req.url.startsWith('/receipt/')) return json(res,200,receipts.get(req.url.slice(9)) || {});
+  return json(res,404,{ok:false,error:'Not found'});
+});
+server.listen(port, 'localhost', () => { if (process.env.RUXT_FIGMA_BRIDGE_QUIET !== '1') console.log(`Nora Figma bridge listening on http://localhost:${port}`); });
+process.on('SIGTERM', () => server.close(() => process.exit(0)));

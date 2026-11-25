@@ -21,35 +21,69 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
     }
 
-    /* Full-Screen Glowing Gradient Border */
+    /* Full-Screen Glowing Dark Green Vignette Border */
     .screen-gradient-border {
       position: fixed;
       inset: 0;
       pointer-events: none;
       box-sizing: border-box;
-      border: 5px solid transparent;
-      border-image: linear-gradient(135deg, #06b6d4, #8b5cf6, #ec4899, #10b981, #06b6d4) 1;
+      border: 4px solid #059669;
       box-shadow: 
-        inset 0 0 24px rgba(6, 182, 212, 0.55),
-        inset 0 0 50px rgba(139, 92, 246, 0.3),
-        inset 0 0 90px rgba(16, 185, 129, 0.2);
-      animation: gradientPulse 3.5s ease-in-out infinite alternate;
+        inset 0 0 35px rgba(5, 150, 105, 0.75),
+        inset 0 0 75px rgba(4, 120, 87, 0.55),
+        inset 0 0 130px rgba(6, 78, 59, 0.4),
+        inset 0 0 200px rgba(2, 44, 34, 0.25);
+      animation: greenGlowPulse 3s ease-in-out infinite alternate;
       z-index: 100;
     }
 
-    @keyframes gradientPulse {
+    @keyframes greenGlowPulse {
       0% {
+        border-color: #047857;
         box-shadow: 
-          inset 0 0 20px rgba(6, 182, 212, 0.45),
-          inset 0 0 40px rgba(139, 92, 246, 0.2),
-          inset 0 0 70px rgba(16, 185, 129, 0.15);
+          inset 0 0 30px rgba(5, 150, 105, 0.65),
+          inset 0 0 65px rgba(4, 120, 87, 0.45),
+          inset 0 0 110px rgba(6, 78, 59, 0.3),
+          inset 0 0 170px rgba(2, 44, 34, 0.2);
         opacity: 0.88;
       }
       100% {
+        border-color: #10b981;
         box-shadow: 
-          inset 0 0 35px rgba(6, 182, 212, 0.75),
-          inset 0 0 65px rgba(139, 92, 246, 0.45),
-          inset 0 0 110px rgba(16, 185, 129, 0.3);
+          inset 0 0 45px rgba(16, 185, 129, 0.85),
+          inset 0 0 90px rgba(5, 150, 105, 0.65),
+          inset 0 0 150px rgba(4, 120, 87, 0.5),
+          inset 0 0 230px rgba(6, 78, 59, 0.35);
+        opacity: 1;
+      }
+    }
+
+    /* Human Takeover Amber Glow Border State */
+    .screen-gradient-border.waiting-user {
+      border: 4px solid #f59e0b;
+      box-shadow: 
+        inset 0 0 35px rgba(245, 158, 11, 0.85),
+        inset 0 0 75px rgba(217, 119, 6, 0.6),
+        inset 0 0 130px rgba(180, 83, 9, 0.45),
+        inset 0 0 200px rgba(120, 53, 15, 0.3);
+      animation: amberGlowPulse 2.5s ease-in-out infinite alternate;
+    }
+
+    @keyframes amberGlowPulse {
+      0% {
+        border-color: #d97706;
+        box-shadow: 
+          inset 0 0 30px rgba(245, 158, 11, 0.7),
+          inset 0 0 65px rgba(217, 119, 6, 0.45),
+          inset 0 0 110px rgba(180, 83, 9, 0.35);
+        opacity: 0.9;
+      }
+      100% {
+        border-color: #fbbf24;
+        box-shadow: 
+          inset 0 0 45px rgba(251, 191, 36, 0.95),
+          inset 0 0 90px rgba(245, 158, 11, 0.7),
+          inset 0 0 150px rgba(217, 119, 6, 0.55);
         opacity: 1;
       }
     }
@@ -63,15 +97,15 @@
       align-items: center;
       gap: 7px;
       padding: 4px 10px;
-      background: rgba(11, 15, 25, 0.85);
-      border: 1px solid rgba(56, 189, 248, 0.4);
+      background: rgba(3, 20, 14, 0.88);
+      border: 1px solid rgba(16, 185, 129, 0.4);
       border-radius: 6px;
       font-size: 10px;
       font-weight: 700;
       letter-spacing: 0.8px;
-      color: #38bdf8;
+      color: #34d399;
       text-transform: uppercase;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5), 0 0 15px rgba(5, 150, 105, 0.2);
       backdrop-filter: blur(8px);
       pointer-events: none;
       z-index: 101;
@@ -86,20 +120,21 @@
       animation: pulse 1.2s infinite ease-in-out;
     }
 
-    /* Floating Top HUD Banner */
+    /* Floating Top Dynamic Island Pill */
     .hud-banner {
       position: fixed;
-      top: 16px;
+      top: 14px;
       left: 50%;
       transform: translateX(-50%);
-      width: 660px;
-      height: 56px;
-      background: rgba(11, 15, 25, 0.94);
-      border: 1px solid rgba(56, 189, 248, 0.4);
-      border-radius: 28px;
-      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.75), 0 0 28px rgba(56, 189, 248, 0.3);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
+      width: 590px;
+      max-width: 92vw;
+      height: 52px;
+      background: rgba(3, 20, 14, 0.94);
+      border: 1.5px solid rgba(16, 185, 129, 0.45);
+      border-radius: 9999px;
+      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.8), 0 0 28px rgba(5, 150, 105, 0.35), inset 0 1px 0 rgba(16, 185, 129, 0.3);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -109,6 +144,7 @@
       z-index: 1000;
       pointer-events: auto;
       cursor: default;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
     .glow-line {
@@ -117,7 +153,7 @@
       left: 0;
       right: 0;
       height: 2px;
-      background: linear-gradient(90deg, transparent, #38bdf8, #8b5cf6, #10b981, transparent);
+      background: linear-gradient(90deg, transparent, #047857, #10b981, #059669, transparent);
       animation: sweep 2.5s ease-in-out infinite;
     }
 
@@ -129,34 +165,19 @@
     .left-section {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 14px;
       min-width: 0;
       flex: 1;
     }
 
-    .ruxt-badge {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      background: rgba(56, 189, 248, 0.16);
-      border: 1px solid rgba(56, 189, 248, 0.45);
-      padding: 4px 10px;
-      border-radius: 9999px;
-      font-size: 11px;
-      font-weight: 800;
-      letter-spacing: 0.5px;
-      color: #38bdf8;
-      text-transform: uppercase;
-      flex-shrink: 0;
-    }
-
     .pulse-dot {
-      width: 8px;
-      height: 8px;
+      width: 10px;
+      height: 10px;
       border-radius: 50%;
       background: #10b981;
-      box-shadow: 0 0 8px #10b981;
+      box-shadow: 0 0 10px #10b981, 0 0 18px rgba(16, 185, 129, 0.6);
       animation: pulse 1.4s infinite ease-in-out;
+      flex-shrink: 0;
     }
 
     @keyframes pulse {
@@ -179,12 +200,13 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      letter-spacing: 0.2px;
     }
 
     .task-step {
       font-size: 11px;
       font-weight: 500;
-      color: #94a3b8;
+      color: #a7f3d0;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -196,6 +218,7 @@
     .action-icon {
       font-size: 12px;
       animation: bounce 1.2s infinite;
+      filter: drop-shadow(0 0 4px #10b981);
     }
 
     @keyframes bounce {
@@ -206,75 +229,84 @@
     .right-section {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
       flex-shrink: 0;
-      margin-left: 12px;
+      margin-left: 16px;
     }
 
-    .progress-text {
+    .hud-banner.waiting-user {
+      border-color: rgba(245, 158, 11, 0.75);
+      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.85), 0 0 32px rgba(245, 158, 11, 0.45);
+    }
+
+    .hud-banner.waiting-user .pulse-dot {
+      background: #f59e0b;
+      box-shadow: 0 0 10px #f59e0b, 0 0 18px rgba(245, 158, 11, 0.7);
+    }
+
+    .resume-btn {
+      background: rgba(16, 185, 129, 0.25);
+      border: 1.5px solid rgba(16, 185, 129, 0.75);
+      color: #6ee7b7;
       font-size: 11px;
-      font-weight: 700;
-      color: #38bdf8;
-      font-variant-numeric: tabular-nums;
-    }
-
-    .esc-hint {
-      font-size: 10px;
-      color: #64748b;
-      font-weight: 600;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 4px;
-      padding: 1px 4px;
-    }
-
-    .abort-btn {
-      background: rgba(239, 68, 68, 0.18);
-      border: 1px solid rgba(239, 68, 68, 0.45);
-      color: #fca5a5;
-      font-size: 11px;
-      font-weight: 700;
-      padding: 6px 12px;
+      font-weight: 800;
+      padding: 7px 15px;
       border-radius: 9999px;
       cursor: pointer;
       display: flex;
       align-items: center;
-      gap: 5px;
+      gap: 6px;
       transition: all 0.2s ease;
       outline: none;
+      letter-spacing: 0.3px;
+      animation: pulseGlow 1.4s infinite alternate;
+    }
+
+    .resume-btn:hover {
+      background: rgba(16, 185, 129, 0.55);
+      border-color: #10b981;
+      color: #ffffff;
+      box-shadow: 0 0 16px rgba(16, 185, 129, 0.85);
+      transform: scale(1.04);
+    }
+
+    @keyframes pulseGlow {
+      0% { box-shadow: 0 0 6px rgba(16, 185, 129, 0.3); }
+      100% { box-shadow: 0 0 14px rgba(16, 185, 129, 0.8); }
+    }
+
+    .abort-btn {
+      background: rgba(239, 68, 68, 0.2);
+      border: 1px solid rgba(239, 68, 68, 0.5);
+      color: #fca5a5;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 7px 15px;
+      border-radius: 9999px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s ease;
+      outline: none;
+      letter-spacing: 0.3px;
     }
 
     .abort-btn:hover {
-      background: rgba(239, 68, 68, 0.4);
-      border-color: rgba(239, 68, 68, 0.8);
+      background: rgba(239, 68, 68, 0.45);
+      border-color: rgba(239, 68, 68, 0.85);
       color: #ffffff;
-      box-shadow: 0 0 12px rgba(239, 68, 68, 0.5);
-      transform: scale(1.02);
-    }
-
-    .progress-bar-container {
-      position: absolute;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      height: 3px;
-      background: rgba(255, 255, 255, 0.05);
-    }
-
-    .progress-bar-fill {
-      height: 100%;
-      background: linear-gradient(90deg, #38bdf8, #8b5cf6, #10b981);
-      width: 0%;
-      transition: width 0.3s ease;
-      box-shadow: 0 0 8px #38bdf8;
+      box-shadow: 0 0 14px rgba(239, 68, 68, 0.6);
+      transform: scale(1.03);
     }
   </style>
 </head>
 <body>
   <!-- Full Screen Perimeter Gradient Border -->
-  <div class="screen-gradient-border"></div>
+  <div class="screen-gradient-border" id="screenBorder"></div>
 
   <!-- Top-left indicator badge -->
-  <div class="corner-badge-tl">
+  <div class="corner-badge-tl" id="cornerBadge">
     <span class="live-dot"></span>
     <span>RuXt Desktop Active</span>
   </div>
@@ -284,10 +316,7 @@
     <div class="glow-line"></div>
 
     <div class="left-section">
-      <div class="ruxt-badge">
-        <span class="pulse-dot"></span>
-        <span>RuXt on Work</span>
-      </div>
+      <span class="pulse-dot"></span>
 
       <div class="task-details">
         <div class="task-title" id="hudTaskTitle">Autonomous Desktop Operator Active</div>
@@ -299,8 +328,12 @@
     </div>
 
     <div class="right-section">
-      <span class="progress-text" id="hudProgressText">0%</span>
-      <span class="esc-hint" title="Press Esc to stop">ESC</span>
+      <button class="resume-btn" id="hudResumeBtn" style="display: none;" title="I have finished entering password / login (Continue)">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+        Continue
+      </button>
       <button class="abort-btn" id="hudAbortBtn" title="Stop live execution (Esc)">
         <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
           <rect x="4" y="4" width="16" height="16" rx="2" />
@@ -308,27 +341,43 @@
         Stop
       </button>
     </div>
-
-    <div class="progress-bar-container">
-      <div class="progress-bar-fill" id="hudProgressBar"></div>
-    </div>
   </div>
 
   <script>
+    const borderEl = document.getElementById('screenBorder');
     const bannerEl = document.getElementById('hudBanner');
     const titleEl = document.getElementById('hudTaskTitle');
     const stepEl = document.getElementById('hudStepText');
     const iconEl = document.getElementById('hudActionIcon');
-    const progressTextEl = document.getElementById('hudProgressText');
-    const progressBarEl = document.getElementById('hudProgressBar');
+    const resumeBtn = document.getElementById('hudResumeBtn');
     const abortBtn = document.getElementById('hudAbortBtn');
 
-    // Handle mouse events toggle so clicks pass through to Notepad except when hovering banner
+    // Active mousemove boundary tracking for instant pointer-events toggle
+    let isHoveringBanner = false;
+    window.addEventListener('mousemove', (e) => {
+      if (!bannerEl) return;
+      const r = bannerEl.getBoundingClientRect();
+      const inside = (
+        e.clientX >= r.left - 15 &&
+        e.clientX <= r.right + 15 &&
+        e.clientY >= r.top - 15 &&
+        e.clientY <= r.bottom + 15
+      );
+      if (inside !== isHoveringBanner) {
+        isHoveringBanner = inside;
+        if (window.ruxtDesktop && window.ruxtDesktop.setIgnoreMouseEvents) {
+          window.ruxtDesktop.setIgnoreMouseEvents(!inside, { forward: true });
+        }
+      }
+    });
+
     if (bannerEl && window.ruxtDesktop && window.ruxtDesktop.setIgnoreMouseEvents) {
       bannerEl.addEventListener('mouseenter', () => {
+        isHoveringBanner = true;
         window.ruxtDesktop.setIgnoreMouseEvents(false);
       });
       bannerEl.addEventListener('mouseleave', () => {
+        isHoveringBanner = false;
         window.ruxtDesktop.setIgnoreMouseEvents(true, { forward: true });
       });
     }
@@ -344,25 +393,69 @@
       if (window.ruxtDesktop && window.ruxtDesktop.abortTask) {
         window.ruxtDesktop.abortTask();
       }
-      stepEl.textContent = 'Stopping operation...';
+      try {
+        fetch('/api/desktop/abort-active', { method: 'POST' }).catch(() => {});
+      } catch (_) {}
+
+      stepEl.textContent = 'Stopping operation immediately...';
+      iconEl.textContent = '⏹️';
       abortBtn.style.opacity = '0.5';
       abortBtn.disabled = true;
     }
 
+    function triggerResume() {
+      if (window.ruxtDesktop && window.ruxtDesktop.resumeTask) {
+        window.ruxtDesktop.resumeTask();
+      }
+      try {
+        fetch('/api/desktop/resume', { 
+          method: 'POST', 
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({})
+        }).catch(() => {});
+      } catch (_) {}
+
+      resumeBtn.style.display = 'none';
+      if (borderEl) borderEl.classList.remove('waiting-user');
+      if (bannerEl) bannerEl.classList.remove('waiting-user');
+      stepEl.textContent = '📸 Capturing fresh screenshot & analyzing screen...';
+      iconEl.textContent = '📸';
+    }
+
+    abortBtn.addEventListener('mousedown', triggerAbort);
     abortBtn.addEventListener('click', triggerAbort);
+    if (resumeBtn) {
+      resumeBtn.addEventListener('mousedown', triggerResume);
+      resumeBtn.addEventListener('click', triggerResume);
+    }
 
     // Handle updates from Electron main process
     if (window.ruxtDesktop && window.ruxtDesktop.onBannerUpdate) {
       window.ruxtDesktop.onBannerUpdate((data) => {
         if (!data) return;
-        if (data.taskName) titleEl.textContent = data.taskName;
-        if (data.stepText) stepEl.textContent = data.stepText;
-        if (data.actionIcon) iconEl.textContent = data.actionIcon;
-        if (typeof data.progress === 'number') {
-          const p = Math.max(0, Math.min(100, Math.round(data.progress)));
-          progressTextEl.textContent = p + '%';
-          progressBarEl.style.width = p + '%';
+        
+        // 1. Check for Human-in-the-Loop takeover state
+        if (data.status === 'waiting_for_user' || data.type === 'waiting_for_user') {
+          if (borderEl) borderEl.classList.add('waiting-user');
+          if (bannerEl) bannerEl.classList.add('waiting-user');
+          if (resumeBtn) resumeBtn.style.display = 'flex';
+          if (titleEl) titleEl.textContent = 'Action Required: Human Takeover';
+          if (stepEl) stepEl.textContent = data.message || data.stepText || 'Please complete action and click Continue';
+          if (iconEl) iconEl.textContent = '🔑';
+          return;
         }
+
+        // 2. Resumed state
+        if (data.type === 'resumed') {
+          if (borderEl) borderEl.classList.remove('waiting-user');
+          if (bannerEl) bannerEl.classList.remove('waiting-user');
+          if (resumeBtn) resumeBtn.style.display = 'none';
+          if (iconEl) iconEl.textContent = '⚡';
+        }
+
+        if (data.taskName && titleEl) titleEl.textContent = data.taskName;
+        if (data.stepText && stepEl) stepEl.textContent = data.stepText;
+        if (data.actionIcon && iconEl) iconEl.textContent = data.actionIcon;
       });
     }
   </script>

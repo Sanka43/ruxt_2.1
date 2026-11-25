@@ -37,3 +37,7 @@ __pycache__/
 .pytest_cache/
 test_acp_image.js
 
+
+# Local scratch work and per-agent private chat memory
+scratch/
+agents/*/memory.json

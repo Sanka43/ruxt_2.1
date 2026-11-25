@@ -3,17 +3,23 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Elena Voss · Chess</title>
+  <title>Elena Voss · Chess lesson</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="./chess.css" />
 </head>
 <body>
-  <div class="table">
-    <header class="top">
-      <div>
-        <h1>Elena Voss</h1>
-        <p>Chess teacher</p>
+  <div class="classroom">
+    <header class="topbar">
+      <div class="person">
+        <img class="avatar" src="../avatar.jpg" alt="Elena Voss" />
+        <div>
+          <strong>Elena Voss</strong>
+          <span id="presence">Active now · Chess lesson</span>
+        </div>
       </div>
-      <span id="turnBadge">White to move</span>
+      <span class="tag" id="turnBadge">White to move</span>
     </header>
 
     <main class="layout">
@@ -28,19 +34,22 @@
         </div>
         <div class="actions">
           <button type="button" id="newGameBtn">New game</button>
-          <button type="button" id="hintBtn" class="soft">Hint</button>
+          <button type="button" id="hintBtn" class="soft">Ask Elena for a hint</button>
         </div>
+        <ol class="moves" id="moveList"></ol>
       </section>
 
-      <aside class="side">
-        <section class="lesson">
-          <h2>Elena</h2>
-          <p id="coachText">You play White. If you make a mistake, I’ll say what you should have done and why — using your computer voice.</p>
-        </section>
-        <section class="moves">
-          <h2>Moves</h2>
-          <ol id="moveList"></ol>
-        </section>
+      <aside class="chat-panel">
+        <section class="thread" id="thread" aria-live="polite"></section>
+        <div class="typing" id="typing" hidden>
+          <img src="../avatar.jpg" alt="" />
+          <span><i></i><i></i><i></i></span>
+        </div>
+        <p class="coach-fallback" id="coachText" hidden></p>
+        <div class="chips">
+          <button type="button" id="hintChip">What should I look at?</button>
+          <button type="button" id="resetChip">Let’s start fresh</button>
+        </div>
       </aside>
     </main>
   </div>

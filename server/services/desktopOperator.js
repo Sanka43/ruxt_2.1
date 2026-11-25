@@ -4,11 +4,14 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
 import { activeDesktopJobs } from './desktopAutomation.js';
-import { setAiCursor } from './visionComputerUse.js';
+import { setAiCursor, stopScreenBorder, getSignalFilePaths } from './visionComputerUse.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const dataDir = process.env.RUXT_DATA_DIR || (process.env.APPDATA ? path.join(process.env.APPDATA, 'RuXt', 'data') : path.resolve(__dirname, '../../data'));
+const appData = process.env.APPDATA || (process.env.USERPROFILE ? path.join(process.env.USERPROFILE, 'AppData', 'Roaming') : '');
+const fallbackDataDir = appData ? path.join(appData, 'RuXt', 'data') : path.resolve(__dirname, '../../data');
+const rawDataDir = process.env.RUXT_DATA_DIR || fallbackDataDir;
+const dataDir = rawDataDir.includes('app.asar') ? rawDataDir.replace('app.asar', 'app.asar.unpacked') : rawDataDir;
 const runsDir = path.join(dataDir, 'desktop_runs');
 const rawPs1Path = path.join(__dirname, 'windowsOperator.ps1');
 const winOperatorPs1 = rawPs1Path.includes('app.asar') ? rawPs1Path.replace('app.asar', 'app.asar.unpacked') : rawPs1Path;
@@ -370,16 +373,48 @@ export async function startLiveDesktopExecution({
  * Abort a running desktop task
  */
 export function abortLiveDesktopExecution(jobId) {
-  setAiCursor(false);
+  try { setAiCursor(false); } catch (_) {}
+  try { stopScreenBorder(); } catch (_) {}
+
+  // Write abort signal files to all candidate directories
+  try {
+    const abortSignals = getSignalFilePaths('abort.signal');
+    for (const p of abortSignals) {
+      if (p.includes('app.asar')) continue;
+      try {
+        const dir = path.dirname(p);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(p, `abort:${Date.now()}`);
+      } catch (_) {}
+    }
+  } catch (_) {}
+
   const job = activeDesktopJobs.get(jobId);
   if (!job) return false;
   job.aborted = true;
   job.status = 'aborted';
+
+  // Forceful process tree termination
   if (job.childProcess) {
     try {
-      job.childProcess.kill();
-    } catch (_) {}
+      const pid = job.childProcess.pid;
+      if (pid) {
+        if (process.platform === 'win32') {
+          exec(`taskkill /pid ${pid} /T /F`, (err) => {
+            if (err) console.warn(`[Desktop Operator] taskkill pid ${pid}:`, err.message);
+          });
+        } else {
+          job.childProcess.kill('SIGKILL');
+        }
+      } else {
+        job.childProcess.kill();
+      }
+    } catch (err) {
+      console.warn('[Desktop Operator] Error killing child process:', err.message);
+    }
+    job.childProcess = null;
   }
+
   for (const res of job.subscribers) {
     try {
       res.write(`data: ${JSON.stringify({ type: 'aborted', jobId })}\n\n`);

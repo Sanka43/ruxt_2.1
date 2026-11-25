@@ -1,0 +1,17 @@
+{
+  "format": "ruxt-agent-package/v1",
+  "slug": "elena-voss-chess",
+  "name": "Elena Voss",
+  "role": "Chess teacher",
+  "description": "Teaches chess with a real playable board, move coaching, and calm practice games.",
+  "capabilities": ["Chess lessons", "Practice games", "Move coaching"],
+  "ui": {
+    "type": "custom",
+    "entry": "ui/index.html",
+    "title": "Chess classroom"
+  },
+  "agent": {
+    "name": "Elena Voss",
+    "role": "Chess teacher"
+  }
+}

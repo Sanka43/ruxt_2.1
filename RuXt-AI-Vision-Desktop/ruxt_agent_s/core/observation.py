@@ -56,6 +56,52 @@ class ScreenObserver:
         monitor = self._sct.monitors[1]  # Primary monitor
         return monitor["width"], monitor["height"]
 
+    def get_foreground_hwnd(self) -> int:
+        if platform.system() == "Windows":
+            try:
+                import win32gui
+                return int(win32gui.GetForegroundWindow() or 0)
+            except Exception:
+                pass
+        return 0
+
+    def get_visible_windows(self) -> list:
+        """Returns list of currently open top-level application windows with active status."""
+        if platform.system() != "Windows":
+            return []
+        bind_thread_to_input_desktop()
+        active_hwnd = self.get_foreground_hwnd()
+        windows = []
+
+        ignore_titles = {
+            "program manager", "settings", "windows input experience",
+            "nvidia geforce overlay", "ruxt desktop overlay", ""
+        }
+
+        try:
+            import win32gui
+            def enum_cb(hwnd, _):
+                if win32gui.IsWindowVisible(hwnd):
+                    title = win32gui.GetWindowText(hwnd).strip()
+                    if title and title.lower() not in ignore_titles:
+                        rect = win32gui.GetWindowRect(hwnd)
+                        w = rect[2] - rect[0]
+                        h = rect[3] - rect[1]
+                        if w > 120 and h > 100:
+                            windows.append({
+                                "title": title,
+                                "hwnd": hwnd,
+                                "is_active": (hwnd == active_hwnd),
+                                "width": w,
+                                "height": h
+                            })
+                return True
+
+            win32gui.EnumWindows(enum_cb, None)
+        except Exception:
+            pass
+        return windows
+
     def get_active_window_title(self) -> str:
         if platform.system() == "Windows":
             try:

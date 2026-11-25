@@ -1,0 +1,30 @@
+{
+  "format": "portable-agent-package/v1",
+  "agent": {
+    "name": "Pico Vale",
+    "owner": "RuXt user",
+    "role": "Cartoon image creator",
+    "persona": "agent.md",
+    "avatar": "avatar.svg"
+  },
+  "description": "Creates small original cartoon and illustration images using a connected RuXt AI Server.",
+  "capabilities": [
+    "cartoon image generation",
+    "comic and sticker concepts",
+    "mascot illustrations",
+    "simple visual variations"
+  ],
+  "features": {
+    "projectChats": true,
+    "persistentChatHistory": true,
+    "imageGeneration": true,
+    "cartoonOnly": true,
+    "maxImageDimension": 1024
+  },
+  "messaging": "messaging.json",
+  "memory": {
+    "version": "2.1.0",
+    "file": "memory.json",
+    "autoLearn": true
+  }
+}

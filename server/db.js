@@ -163,5 +163,41 @@ try {
   db.prepare(`DELETE FROM chat_sessions WHERE id NOT IN (SELECT DISTINCT session_id FROM chat_messages)`).run();
 } catch (_) {}
 
+// Ensure RuXt (Lead) is always seeded in database on fresh setup
+try {
+  const existingRuxt = db.prepare("SELECT id FROM agents WHERE slug = 'ruxt'").get();
+  if (!existingRuxt) {
+    const defaultManifest = {
+      format: "common-room-agent-package/v2",
+      frameworkId: "ruxt/orchestrator-leader/v1",
+      installationId: "ruxt-leader-core-001",
+      name: "RuXt",
+      role: "Team Leader & Engine Orchestrator",
+      description: "Central orchestrator and leader of RuXt Local Engine. Plans projects, coordinates specialist agents, manages task distribution, and ensures rigorous quality control.",
+      category: "Orchestration & Leadership",
+      experience: "Platform Core",
+      isLeader: true,
+      tags: ["Team Coordinator", "Project Architecture", "Task Orchestration", "Quality Assurance", "Multi-Agent Workflow", "RuXt Engine"],
+      agent: { name: "RuXt", role: "Team Leader & Engine Orchestrator", persona: "agent.md", avatar: "avatar.png" },
+      adapters: { skill: "skills/ruxt-orchestrator/SKILL.md" },
+      version: "2.1.0"
+    };
+    db.prepare(`
+      INSERT INTO agents (id, name, slug, role, description, version, avatar, ui_entry, manifest)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      'ruxt-leader-core-001',
+      'RuXt',
+      'ruxt',
+      'Team Leader & Engine Orchestrator',
+      'Central orchestrator and leader of RuXt Local Engine. Plans projects, coordinates specialist agents, manages task distribution, and ensures rigorous quality control.',
+      '2.1.0',
+      '/agent-avatars/ruxt.png',
+      '',
+      JSON.stringify(defaultManifest)
+    );
+  }
+} catch (_) {}
+
 export default db;
 export { dataDir, dbPath };

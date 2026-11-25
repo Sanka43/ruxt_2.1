@@ -1,0 +1,6 @@
+<html><body style="font:13px Inter,system-ui;padding:16px;background:#171717;color:#fff"><b>Nora Vale bridge</b><p id="status">Waiting for RuXt…</p><script>
+const base='http://localhost:17451'; const status=document.querySelector('#status');
+async function poll(){try{const r=await fetch(base+'/poll');const d=await r.json();status.textContent=d.commands.length?`Applying ${d.commands.length} canvas change(s)…`:'Connected · waiting for Nora';d.commands.forEach(command=>parent.postMessage({pluginMessage:{command}},'*'));}catch(e){status.textContent='Start the Nora bridge in RuXt, then retry.';}}
+setInterval(poll,500); poll();
+window.onmessage=(event)=>{const m=event.data&&event.data.pluginMessage;if(m&&m.type==='done'){fetch(base+'/complete',{method:'POST',body:JSON.stringify(m)}).catch(()=>{});}};
+</script></body></html>

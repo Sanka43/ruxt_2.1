@@ -1,0 +1,31 @@
+{
+  "format": "ruxt-agent-package/v1",
+  "slug": "nora-vale-figma",
+  "name": "Nora Vale",
+  "role": "Figma product designer",
+  "description": "Creates and refines Figma designs through a visible, step-by-step app workflow.",
+  "capabilities": [
+    "Figma UI design",
+    "Wireframes and prototypes",
+    "Design systems",
+    "Visible app handoff",
+    "Project history",
+    "Supervisor review"
+  ],
+  "allowSupervisors": true,
+  "ui": {
+    "type": "custom",
+    "entry": "ui/index.html",
+    "title": "Nora Vale · Figma studio"
+  },
+  "agent": {
+    "name": "Nora Vale",
+    "role": "Figma product designer",
+    "avatar": "avatar.svg"
+  },
+  "memory": {
+    "version": "2.1.0",
+    "file": "memory.json",
+    "autoLearn": true
+  }
+}

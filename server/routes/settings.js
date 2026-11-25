@@ -3,7 +3,8 @@ import db, { dbPath, dataDir } from '../db.js';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { execSync } from 'child_process';
+import { execSync, spawn } from 'child_process';
+import { maskSettings, isSecretSettingKey, isMaskedSecret } from '../services/secrets.js';
 import { generateAIResponse, findAntigravityBinary, acpService } from '../services/aiProvider.js';
 
 const router = Router();
@@ -14,36 +15,71 @@ const userProfile = process.env.USERPROFILE || '';
 const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
 const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
 
-// Fast process query with timeout
-function getLiveProcessPath(processName) {
+const pathExts = (process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').map(e => e.toLowerCase());
+const pathDirs = (process.env.PATH || '').split(path.delimiter).filter(Boolean);
+
+// High-speed zero-subprocess in-memory PATH resolver (0ms fs check)
+export function findBinaryInPath(names) {
+  const targetNames = Array.isArray(names) ? names : [names];
+  for (const dir of pathDirs) {
+    for (const name of targetNames) {
+      const direct = path.join(dir, name);
+      if (fs.existsSync(direct)) {
+        try { if (!fs.statSync(direct).isDirectory()) return direct; } catch (_) {}
+      }
+      for (const ext of pathExts) {
+        const full = path.join(dir, name.toLowerCase().endsWith(ext) ? name : name + ext);
+        if (fs.existsSync(full)) {
+          try { if (!fs.statSync(full).isDirectory()) return full; } catch (_) {}
+        }
+      }
+    }
+  }
+  return null;
+}
+
+// Check system PATH in-memory without spawning where.exe
+function checkCliTool(cmdName) {
+  return findBinaryInPath(cmdName);
+}
+
+// Single-call cached process detector to eliminate event loop blocking
+let runningProcessCache = null;
+let runningProcessCacheTime = 0;
+
+function getRunningProcessSet() {
+  const now = Date.now();
+  if (runningProcessCache && (now - runningProcessCacheTime < 12000)) {
+    return runningProcessCache;
+  }
+  const set = new Set();
   try {
-    const stdout = execSync(`tasklist /FI "IMAGENAME eq ${processName}.exe" /FO CSV /NH`, {
-      stdio: 'pipe',
-      timeout: 1200
-    }).toString();
-    if (stdout && stdout.toLowerCase().includes(processName.toLowerCase())) {
-      return true;
+    const stdout = execSync('tasklist /FO CSV /NH', { stdio: 'pipe', timeout: 800 }).toString();
+    const lines = stdout.split(/\r?\n/);
+    for (const line of lines) {
+      const match = line.match(/^"([^"]+)"/);
+      if (match && match[1]) {
+        set.add(match[1].toLowerCase());
+      }
     }
   } catch (_) {}
-  return false;
+  runningProcessCache = set;
+  runningProcessCacheTime = now;
+  return set;
 }
 
-// Check system PATH via where.exe with safety timeout
-function checkCliTool(cmdName) {
-  try {
-    const stdout = execSync(`where.exe ${cmdName}`, { stdio: 'pipe', timeout: 1200 }).toString();
-    const lines = stdout.trim().split(/\r?\n/).filter(Boolean);
-    return lines.length > 0 ? lines[0] : null;
-  } catch (_) {
-    return null;
-  }
+function getLiveProcessPath(processName) {
+  if (!processName) return false;
+  const set = getRunningProcessSet();
+  const lower = processName.toLowerCase();
+  return set.has(lower) || set.has(`${lower}.exe`);
 }
 
-// Targeted Registry query with safety timeout
+// Fast registry lookup - only queried if candidate paths & PATH yield null
 function getRegistryInstallPath(keyword) {
   try {
     const cmd = `reg query HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall /s /f "${keyword}" 2>nul`;
-    const out = execSync(cmd, { stdio: 'pipe', timeout: 1500 }).toString();
+    const out = execSync(cmd, { stdio: 'pipe', timeout: 1000 }).toString();
     const match = out.match(/(?:DisplayIcon|InstallLocation|UninstallString)\s+REG_SZ\s+["']?([^"',\r\n]+)/i);
     if (match && match[1]) {
       let resolved = match[1].trim();
@@ -195,7 +231,7 @@ router.get('/', (req, res) => {
     for (const row of rows) {
       settings[row.key] = row.value;
     }
-    res.json({ success: true, settings });
+    res.json({ success: true, settings: maskSettings(settings) });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -206,6 +242,10 @@ router.post('/', (req, res) => {
   try {
     const { key, value } = req.body;
     if (!key) return res.status(400).json({ error: 'Missing setting key' });
+    // The UI only ever sees masked keys; never overwrite a real key with its mask.
+    if (isSecretSettingKey(key) && isMaskedSecret(value)) {
+      return res.json({ success: true, key, unchanged: true });
+    }
 
     const stmt = db.prepare(`
       INSERT INTO settings (key, value, updated_at) 
@@ -240,6 +280,7 @@ router.post('/batch', (req, res) => {
 
     const updateMany = db.transaction((entries) => {
       for (const [k, v] of Object.entries(entries)) {
+        if (isSecretSettingKey(k) && isMaskedSecret(v)) continue;
         insertOrUpdate.run(k, typeof v === 'object' ? JSON.stringify(v) : String(v));
       }
     });
@@ -312,6 +353,174 @@ router.post('/clean-temp-files', (req, res) => {
   }
 });
 
+// 2d-2b. Test Antigravity local engine connection
+router.post('/antigravity/test', async (req, res) => {
+  const startTime = Date.now();
+  try {
+    const customPath = req.body?.customPath || null;
+    const binary = acpService.findBinary(customPath) || findAntigravityBinary(customPath);
+    if (!binary) {
+      return res.status(404).json({
+        success: false,
+        error: 'Google Antigravity binary (agy.exe) not found on system.'
+      });
+    }
+
+    let mode = 'acp';
+    try {
+      await acpService.ensureReady({ customBinaryPath: binary });
+    } catch (acpErr) {
+      mode = 'cli';
+    }
+
+    const latency = Date.now() - startTime;
+    res.json({
+      success: true,
+      binaryPath: binary,
+      mode,
+      latencyMs: latency,
+      message: `Antigravity local engine connected successfully via ${mode.toUpperCase()} (${latency}ms)`
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message,
+      latencyMs: Date.now() - startTime
+    });
+  }
+});
+
+// 2d-2c. Launch Google account login for Antigravity
+router.post('/antigravity/login', (req, res) => {
+  try {
+    const customPath = req.body?.customPath || null;
+    const binary = acpService.findBinary(customPath) || findAntigravityBinary(customPath);
+    if (!binary) {
+      return res.status(404).json({
+        success: false,
+        error: 'Google Antigravity binary (agy.exe) not found. Please install agy or specify custom path.'
+      });
+    }
+
+    if (process.platform === 'win32') {
+      const isAgy = path.basename(binary).toLowerCase().startsWith('agy');
+      const startArgs = isAgy
+        ? ['/d', '/c', 'start', 'Antigravity Google Sign-in', binary, 'acp', '--login']
+        : ['/d', '/c', 'start', 'Antigravity IDE', binary];
+      spawn('cmd.exe', startArgs, { stdio: 'ignore', detached: true }).unref();
+    } else {
+      spawn(binary, ['acp', '--login'], { stdio: 'ignore', detached: true }).unref();
+    }
+
+    res.json({
+      success: true,
+      message: 'Antigravity Google login process launched in terminal window. Follow prompt in terminal/browser to complete login.'
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
+// Helper to find Codex CLI on the host machine
+function findCodexBinary(customPath) {
+  if (customPath && fs.existsSync(customPath)) return customPath;
+  const inPath = findBinaryInPath(['codex', 'openai', 'code']);
+  if (inPath) return inPath;
+  const candidates = [
+    path.join(localAppData, 'Programs', 'codex', 'codex.exe'),
+    path.join(roamingAppData, 'npm', 'codex.cmd'),
+    path.join(roamingAppData, 'npm', 'codex'),
+    path.join(userProfile, 'AppData', 'Roaming', 'npm', 'codex.cmd'),
+    path.join(localAppData, 'OpenAI', 'codex.exe'),
+    path.join(localAppData, 'Programs', 'Microsoft VS Code', 'Code.exe'),
+    path.join(localAppData, 'Programs', 'Microsoft VS Code', 'bin', 'code.cmd'),
+    path.join(programFiles, 'Microsoft VS Code', 'Code.exe'),
+    path.join(programFiles, 'Microsoft VS Code', 'bin', 'code.cmd'),
+    path.join(userProfile, '.codex', 'bin', 'codex.exe')
+  ];
+  for (const c of candidates) {
+    if (c && fs.existsSync(c)) return c;
+  }
+  return null;
+}
+
+// Helper to find Cursor binary
+function findCursorBinary(customPath) {
+  if (customPath && fs.existsSync(customPath)) return customPath;
+  const inPath = findBinaryInPath(['cursor', 'cursor.cmd']);
+  if (inPath) return inPath;
+  const candidates = [
+    path.join(localAppData, 'Programs', 'cursor', 'Cursor.exe'),
+    path.join(localAppData, 'Programs', 'cursor', 'resources', 'app', 'bin', 'cursor'),
+    path.join(localAppData, 'cursor', 'Cursor.exe'),
+    path.join(programFiles, 'Cursor', 'Cursor.exe')
+  ];
+  for (const c of candidates) {
+    if (c && fs.existsSync(c)) return c;
+  }
+  return null;
+}
+
+// Helper to find Claude Desktop / CLI binary
+function findClaudeBinary(customPath) {
+  if (customPath && fs.existsSync(customPath)) return customPath;
+  const inPath = findBinaryInPath(['claude', 'claude.cmd']);
+  if (inPath) return inPath;
+  const candidates = [
+    path.join(localAppData, 'AnthropicClaude', 'claude.exe'),
+    path.join(localAppData, 'Programs', 'Claude', 'Claude.exe'),
+    path.join(programFiles, 'Claude', 'Claude.exe'),
+    path.join(roamingAppData, 'npm', 'claude.cmd')
+  ];
+  for (const c of candidates) {
+    if (c && fs.existsSync(c)) return c;
+  }
+  return null;
+}
+
+// Helper to find Ollama binary
+function findOllamaBinary(customPath) {
+  if (customPath && fs.existsSync(customPath)) return customPath;
+  const inPath = findBinaryInPath(['ollama']);
+  if (inPath) return inPath;
+  const candidates = [
+    path.join(localAppData, 'Programs', 'Ollama', 'ollama.exe'),
+    path.join(programFiles, 'Ollama', 'ollama.exe')
+  ];
+  for (const c of candidates) {
+    if (c && fs.existsSync(c)) return c;
+  }
+  return null;
+}
+
+// Helper to inspect Codex / OpenAI CLI login tokens
+function getCodexAuthInfo() {
+  const candidates = [
+    path.join(userProfile, '.codex', 'auth.json'),
+    path.join(userProfile, '.codex', 'config.json'),
+    path.join(userProfile, '.openai', 'auth.json'),
+    path.join(userProfile, '.config', 'codex', 'auth.json')
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) {
+      try {
+        const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+        if (data.email || data.user?.email || data.access_token || data.token || data.apiKey) {
+          return {
+            authenticated: true,
+            email: data.email || data.user?.email || null,
+            token: data.access_token || data.token || data.apiKey || null
+          };
+        }
+      } catch (_) {}
+    }
+  }
+  return { authenticated: false, email: null, token: null };
+}
+
 // 2d-3. Model providers and accounts status (Image 1 & 2 match)
 router.get('/providers-status', (req, res) => {
   try {
@@ -328,24 +537,26 @@ router.get('/providers-status', (req, res) => {
     const needsSetup = [];
 
     // 1. Google Gemini (Antigravity ACP Engine)
-    if (hasAntigravity && (acpAccount.authenticated || acpAccount.email)) {
+    if (hasAntigravity) {
+      const isAuth = acpAccount.authenticated || Boolean(acpAccount.email);
       ready.push({
         id: 'antigravity',
         name: 'Google Gemini (Antigravity)',
-        subtitle: acpAccount.email || 'isankaerangahtc820@gmail.com',
-        email: acpAccount.email || 'isankaerangahtc820@gmail.com',
-        version: acpAccount.version ? `v${acpAccount.version}` : 'v1.4.3',
+        subtitle: acpAccount.email || (isAuth ? 'Connected via ACP' : `Local Engine Ready (${path.basename(agyBinary || acpBinary)})`),
+        email: acpAccount.email || (isAuth ? 'Authenticated Session' : 'Local IDE Engine Active'),
+        version: acpAccount.version ? `v${acpAccount.version}` : 'v1.5',
         status: 'ready',
         binaryPath: acpBinary || agyBinary,
         type: 'acp',
-        icon: 'antigravity'
+        icon: 'antigravity',
+        authenticated: isAuth
       });
     } else {
       needsSetup.push({
         id: 'antigravity',
         name: 'Google Gemini (Antigravity)',
         vendor: 'Google DeepMind',
-        reason: hasAntigravity ? 'Not signed in. Click to authenticate Google account.' : 'Antigravity IDE / ACP binary not detected on this PC.',
+        reason: 'Antigravity IDE / agy CLI binary not detected on this PC.',
         icon: 'antigravity',
         canAuth: true
       });
@@ -358,42 +569,129 @@ router.get('/providers-status', (req, res) => {
         name: 'Google Gemini (Cloud API)',
         subtitle: `Key: ${settings.gemini_api_key.slice(0, 7)}...`,
         email: 'Direct Cloud API',
-        version: 'v2.0 Flash/Pro',
+        version: 'v2.5 Flash',
         status: 'ready',
         type: 'api',
         icon: 'gemini'
       });
+    } else {
+      needsSetup.push({
+        id: 'gemini',
+        name: 'Google Gemini (Cloud API)',
+        vendor: 'Google AI Studio',
+        reason: 'No API Key - click Set up to enter free key.',
+        icon: 'gemini',
+        apiKeyTarget: 'gemini_api_key'
+      });
     }
 
-    // 3. OpenAI
-    if (settings.openai_api_key && settings.openai_api_key.trim().length > 5) {
+    // 3. OpenAI / Codex (Supports both Cloud API Key and local Codex CLI)
+    const codexBin = findCodexBinary(settings.codex_custom_path);
+    const codexAuth = getCodexAuthInfo();
+    const hasOpenAiKey = settings.openai_api_key && settings.openai_api_key.trim().length > 5;
+
+    if (hasOpenAiKey || codexBin || codexAuth.authenticated) {
+      const isCli = !hasOpenAiKey && (Boolean(codexBin) || codexAuth.authenticated);
       ready.push({
         id: 'openai',
         name: 'OpenAI (GPT-4o & Codex)',
-        subtitle: `Key: ${settings.openai_api_key.slice(0, 6)}...`,
-        email: 'API Key Active',
+        subtitle: hasOpenAiKey 
+          ? `Key: ${settings.openai_api_key.slice(0, 6)}...` 
+          : (codexAuth.email ? `${codexAuth.email} (Codex CLI)` : `Local Codex/VSCode CLI (${path.basename(codexBin || 'codex')})`),
+        email: hasOpenAiKey ? 'API Key Active' : (codexAuth.email || 'Codex Session Active'),
         version: 'v4.0',
         status: 'ready',
-        type: 'api',
-        icon: 'openai'
+        type: isCli ? 'cli' : 'api',
+        icon: 'openai',
+        binaryPath: codexBin,
+        authenticated: true
+      });
+    } else {
+      needsSetup.push({
+        id: 'openai',
+        name: 'OpenAI / Codex',
+        vendor: 'OpenAI',
+        reason: 'No OpenAI API Key or Codex CLI detected on this PC.',
+        icon: 'openai',
+        apiKeyTarget: 'openai_api_key'
       });
     }
 
-    // 4. Anthropic Claude
-    if (settings.anthropic_api_key && settings.anthropic_api_key.trim().length > 5) {
+    // 4. Anthropic Claude (Supports both Cloud API Key and Claude Desktop / CLI)
+    const claudeBin = findClaudeBinary(settings.claude_custom_path);
+    const hasClaudeKey = settings.anthropic_api_key && settings.anthropic_api_key.trim().length > 5;
+    if (hasClaudeKey || claudeBin) {
       ready.push({
         id: 'claude',
         name: 'Anthropic Claude (Sonnet 3.7)',
-        subtitle: `Key: ${settings.anthropic_api_key.slice(0, 8)}...`,
-        email: 'API Key Active',
+        subtitle: hasClaudeKey ? `Key: ${settings.anthropic_api_key.slice(0, 8)}...` : `Local Claude (${path.basename(claudeBin)})`,
+        email: hasClaudeKey ? 'API Key Active' : 'Claude Desktop / CLI Active',
         version: 'v3.7',
         status: 'ready',
-        type: 'api',
-        icon: 'claude'
+        type: hasClaudeKey ? 'api' : 'cli',
+        icon: 'claude',
+        binaryPath: claudeBin
+      });
+    } else {
+      needsSetup.push({
+        id: 'claude',
+        name: 'Anthropic Claude',
+        vendor: 'Anthropic',
+        reason: 'No Anthropic API Key or Claude CLI detected.',
+        icon: 'claude',
+        apiKeyTarget: 'anthropic_api_key'
       });
     }
 
-    // 5. xAI / Grok
+    // 5. Cursor AI (Agent & Editor)
+    const cursorBin = findCursorBinary(settings.cursor_custom_path);
+    if (cursorBin) {
+      ready.push({
+        id: 'cursor',
+        name: 'Cursor AI (Agent & Editor)',
+        subtitle: `Local Agent Active (${path.basename(cursorBin)})`,
+        email: 'Local Cursor IDE Session',
+        version: 'v0.45+',
+        status: 'ready',
+        type: 'cli',
+        icon: 'cursor',
+        binaryPath: cursorBin
+      });
+    } else {
+      needsSetup.push({
+        id: 'cursor',
+        name: 'Cursor',
+        vendor: 'Anysphere',
+        reason: 'Cursor IDE / CLI not detected on this machine.',
+        icon: 'cursor'
+      });
+    }
+
+    // 6. Local Ollama Runtime
+    const ollamaBin = findOllamaBinary(settings.ollama_custom_path);
+    if (ollamaBin) {
+      ready.push({
+        id: 'ollama',
+        name: 'Local Ollama Runtime',
+        subtitle: `Local Engine (${path.basename(ollamaBin)})`,
+        email: 'Offline Local Models',
+        version: 'v0.5+',
+        status: 'ready',
+        type: 'local',
+        icon: 'ollama',
+        binaryPath: ollamaBin
+      });
+    } else {
+      needsSetup.push({
+        id: 'ollama',
+        name: 'Ollama (Local Models)',
+        vendor: 'Ollama',
+        reason: 'Local Ollama binary not detected.',
+        icon: 'ollama'
+      });
+    }
+
+    // 7. xAI / Grok
     if (settings.xai_api_key && settings.xai_api_key.trim().length > 5) {
       ready.push({
         id: 'xai',
@@ -416,7 +714,7 @@ router.get('/providers-status', (req, res) => {
       });
     }
 
-    // 6. OpenRouter
+    // 8. OpenRouter
     if (settings.openrouter_api_key && settings.openrouter_api_key.trim().length > 5) {
       ready.push({
         id: 'openrouter',
@@ -430,46 +728,55 @@ router.get('/providers-status', (req, res) => {
       });
     }
 
-    // Remaining providers matching Image 1
-    needsSetup.push(
-      { id: 'kimi', name: 'Kimi', vendor: 'Moonshot AI', reason: 'Needs setup', icon: 'kimi' },
-      { id: 'droid', name: 'Droid', vendor: 'Factory', reason: 'Needs setup', icon: 'droid' },
-      { id: 'cursor', name: 'Cursor', vendor: 'Cursor', reason: 'Needs setup', icon: 'cursor' },
-      { id: 'copilot', name: 'GitHub Copilot', vendor: 'GitHub', reason: 'Needs setup', icon: 'copilot' },
-      { id: 'commandcode', name: 'Command Code', vendor: 'Command Code', reason: 'Needs setup', icon: 'commandcode' }
-    );
-
-    if (!settings.gemini_api_key || settings.gemini_api_key.trim().length <= 15) {
-      needsSetup.push({
-        id: 'gemini_api',
-        name: 'Google Gemini (Cloud API)',
-        vendor: 'Google AI Studio',
-        reason: 'No API Key - click Set up to enter free key.',
-        icon: 'gemini',
-        apiKeyTarget: 'gemini_api_key'
+    // Kimi (Moonshot AI)
+    if (settings.kimi_api_key && settings.kimi_api_key.trim().length > 5) {
+      ready.push({
+        id: 'kimi',
+        name: 'Kimi',
+        subtitle: `Key: ${settings.kimi_api_key.slice(0, 6)}...`,
+        email: 'Moonshot AI Active',
+        version: 'v1.5',
+        status: 'ready',
+        type: 'api',
+        icon: 'kimi'
       });
+    } else {
+      needsSetup.push({ id: 'kimi', name: 'Kimi', vendor: 'Moonshot AI', reason: 'Needs setup', icon: 'kimi', apiKeyTarget: 'kimi_api_key' });
     }
 
-    if (!settings.openai_api_key || settings.openai_api_key.trim().length <= 5) {
-      needsSetup.push({
-        id: 'openai_api',
-        name: 'OpenAI / Codex',
-        vendor: 'OpenAI',
-        reason: 'No OpenAI API Key.',
-        icon: 'openai',
-        apiKeyTarget: 'openai_api_key'
+    // Droid (Factory)
+    if (settings.droid_api_key && settings.droid_api_key.trim().length > 5) {
+      ready.push({
+        id: 'droid',
+        name: 'Droid',
+        subtitle: 'Factory.ai Active Agent',
+        email: 'Autonomous Droid Agent',
+        version: 'v1.0',
+        status: 'ready',
+        type: 'api',
+        icon: 'droid'
       });
+    } else {
+      needsSetup.push({ id: 'droid', name: 'Droid', vendor: 'Factory', reason: 'Needs setup', icon: 'droid', apiKeyTarget: 'droid_api_key' });
     }
 
-    if (!settings.anthropic_api_key || settings.anthropic_api_key.trim().length <= 5) {
-      needsSetup.push({
-        id: 'claude_api',
-        name: 'Anthropic Claude',
-        vendor: 'Anthropic',
-        reason: 'No Anthropic API Key.',
-        icon: 'claude',
-        apiKeyTarget: 'anthropic_api_key'
+    // GitHub Copilot
+    needsSetup.push({ id: 'copilot', name: 'GitHub Copilot', vendor: 'GitHub', reason: 'Needs setup', icon: 'copilot' });
+
+    // Command Code / Cohere
+    if (settings.cohere_api_key && settings.cohere_api_key.trim().length > 5) {
+      ready.push({
+        id: 'commandcode',
+        name: 'Command Code',
+        subtitle: `Key: ${settings.cohere_api_key.slice(0, 6)}...`,
+        email: 'Cohere Enterprise API',
+        version: 'Command R+',
+        status: 'ready',
+        type: 'api',
+        icon: 'commandcode'
       });
+    } else {
+      needsSetup.push({ id: 'commandcode', name: 'Command Code', vendor: 'Cohere', reason: 'Needs setup', icon: 'commandcode', apiKeyTarget: 'cohere_api_key' });
     }
 
     res.json({
@@ -565,6 +872,45 @@ router.post('/clear-history', (req, res) => {
     db.exec('PRAGMA incremental_vacuum');
 
     res.json({ success: true, message: 'History purged successfully.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 2e-2. Reset Workspace to Factory Clean State (Full Clean Reset)
+router.post('/factory-reset', (req, res) => {
+  try {
+    // 1. Purge chat sessions, messages, tasks, logs, boardrooms
+    db.prepare('DELETE FROM chat_messages').run();
+    db.prepare('DELETE FROM chat_sessions').run();
+    db.prepare('DELETE FROM tasks').run();
+    db.prepare('DELETE FROM activity_logs').run();
+    try { db.prepare('DELETE FROM boardroom_messages').run(); } catch (_) {}
+    try { db.prepare('DELETE FROM boardroom_sessions').run(); } catch (_) {}
+    try { db.prepare('DELETE FROM agent_dispatches').run(); } catch (_) {}
+
+    // 2. Remove all specialist agents, preserving strictly the core 'ruxt' leader
+    db.prepare("DELETE FROM agents WHERE slug != 'ruxt'").run();
+
+    // 3. Remove user-installed agent directories if present in dataDir/agents
+    const userAgentsDir = path.join(dataDir, 'agents');
+    if (fs.existsSync(userAgentsDir)) {
+      try {
+        const entries = fs.readdirSync(userAgentsDir);
+        for (const e of entries) {
+          if (e !== 'ruxt' && e !== 'packages') {
+            fs.rmSync(path.join(userAgentsDir, e), { recursive: true, force: true });
+          }
+        }
+      } catch (_) {}
+    }
+
+    db.exec('VACUUM');
+
+    res.json({
+      success: true,
+      message: 'Workspace has been reset to factory fresh state! Only RuXt Leader remains.'
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -720,21 +1066,39 @@ router.get('/detect-runtimes', async (req, res) => {
     });
 
     // --- E. OpenAI / Codex / VS Code ---
-    results.push(resolveRuntime({
+    const codexCliPath = findCodexBinary(settings.codex_custom_path);
+    const codexAuthStatus = getCodexAuthInfo();
+    const codexResolved = resolveRuntime({
       id: 'codex',
       name: 'OpenAI / Codex Environment',
-      type: 'API & Editor Adapter',
-      processName: 'Code',
-      cliNames: ['codex', 'code', 'openai'],
+      type: 'Local CLI, Editor & Cloud API',
+      processName: 'codex',
+      cliNames: ['codex', 'codex.cmd', 'openai', 'openai.cmd', 'code'],
       registryKeyword: 'Visual Studio Code',
       customPath: settings.codex_custom_path,
       envCandidates: [
+        codexCliPath,
+        path.join(localAppData, 'Programs', 'codex', 'codex.exe'),
+        path.join(roamingAppData, 'npm', 'codex.cmd'),
+        path.join(userProfile, 'AppData', 'Roaming', 'npm', 'codex.cmd'),
+        path.join(localAppData, 'OpenAI', 'codex.exe'),
         path.join(localAppData, 'Programs', 'Microsoft VS Code', 'Code.exe'),
         path.join(localAppData, 'Programs', 'Microsoft VS Code', 'bin', 'code.cmd'),
         path.join(programFiles, 'Microsoft VS Code', 'Code.exe')
       ],
-      description: 'OpenAI GPT-4o, GPT-4o-mini, and VS Code / Codex tooling.'
-    }));
+      description: 'OpenAI GPT-4o, GPT-4o-mini, and Codex CLI / tooling.'
+    });
+
+    results.push({
+      ...codexResolved,
+      installed: codexResolved.installed || Boolean(codexCliPath) || codexAuthStatus.authenticated || Boolean(settings.openai_api_key),
+      path: codexCliPath || codexResolved.path,
+      source: codexCliPath ? 'Codex CLI Environment' : codexResolved.source,
+      models: ['gpt-4o', 'gpt-4o-mini', 'o3-mini', 'codex'],
+      description: codexCliPath
+        ? `Found Codex CLI at ${codexCliPath}. Zero API key required!`
+        : (settings.openai_api_key ? 'Authenticated via OpenAI Cloud API Key.' : codexResolved.description)
+    });
 
     const enrichedResults = results.map(r => ({
       ...r,
@@ -754,7 +1118,8 @@ router.get('/detect-runtimes', async (req, res) => {
 // 4. Test connection to selected AI Provider
 router.post('/test-connection', async (req, res) => {
   try {
-    const { provider, model, apiKey, hostUrl, baseUrl, customPath } = req.body;
+    const { provider, model, hostUrl, baseUrl, customPath } = req.body;
+    const apiKey = isMaskedSecret(req.body.apiKey) ? '' : req.body.apiKey;
 
     const rows = db.prepare('SELECT key, value FROM settings').all();
     const dbSettings = {};

@@ -47,6 +47,7 @@ class RuXtVisionAgent:
             move_duration=config.execution.mouse_move_duration,
             action_delay=config.execution.action_delay,
             type_via_clipboard=config.execution.type_via_clipboard,
+            typing_interval=getattr(config.execution, "typing_interval", 0.025),
             failsafe=config.execution.failsafe,
             cursor_mode=config.execution.cursor_mode,
             independent_cursor=config.execution.independent_cursor,
@@ -58,7 +59,8 @@ class RuXtVisionAgent:
                 screen_width=screen_w,
                 screen_height=screen_h,
                 mode=config.grounding.omniparser_mode,
-                endpoint=config.grounding.omniparser_endpoint
+                endpoint=config.grounding.omniparser_endpoint,
+                fast_mode=getattr(config.grounding, "fast_mode", True)
             )
             if config.grounding.use_omniparser
             else None
@@ -83,10 +85,58 @@ class RuXtVisionAgent:
 
         self.history: List[Dict[str, Any]] = []
 
+        # Clean up any leftover signals from previous aborted runs
+        for ap in self._get_signal_paths("abort.signal"):
+            try:
+                if ap.exists(): ap.unlink()
+            except Exception:
+                pass
+
+    def _normalize_single_action(self, line: str) -> Optional[str]:
+        line = line.strip("` \t\r")
+        if not line or line.startswith("#"):
+            return None
+
+        # Strip python code fences if any
+        if line.startswith("```"):
+            return None
+
+        # Handle UI-TARS action syntax (e.g. click(start_box='(500, 300)'))
+        if "start_box=" in line or "point=" in line:
+            coords = self.grounder.extract_coordinates(line)
+            if coords:
+                line = f"agent.click(x={coords[0]}, y={coords[1]})"
+
+        # Handle UI-TARS type(content='...')
+        uitars_type = re.search(r"type\s*\(\s*(?:content|text)\s*=\s*['\"](.*?)['\"]\s*\)", line, re.IGNORECASE)
+        if uitars_type:
+            line = f'agent.type(text="{uitars_type.group(1)}")'
+
+        valid_funcs = [
+            "click", "double_click", "right_click", "type", "press_key", "hotkey",
+            "scroll", "drag_and_drop", "draw_shape", "draw_stroke", "wait", "launch", "finish",
+            "request_user_intervention", "ask_user", "pause_for_user", "request_user_takeover",
+            "click_control", "focus_window", "maximize_window", "minimize_window", "close_window"
+        ]
+
+        if line.startswith("agent."):
+            return line
+
+        for vf in valid_funcs:
+            if line.startswith(f"{vf}(") or re.match(rf"^{vf}\s*\(", line):
+                return f"agent.{line}"
+
+        # Search for agent.<func>(...) inside line
+        found = re.search(r"(agent\.(?:" + "|".join(valid_funcs) + r")\(.*?\))", line)
+        if found:
+            return found.group(1)
+
+        return None
+
     def _parse_response(self, text: str) -> Dict[str, Any]:
         reflection = ""
         plan = ""
-        action_str = ""
+        actions: List[str] = []
 
         ref_match = re.search(r"(?:Reflection|Thought):\s*(.*?)(?=\nPlan:|\nAction:|$)", text, re.DOTALL | re.IGNORECASE)
         if ref_match:
@@ -98,50 +148,45 @@ class RuXtVisionAgent:
 
         action_match = re.search(r"Action:\s*(.*)", text, re.DOTALL | re.IGNORECASE)
         if action_match:
-            raw_action = action_match.group(1).strip()
-            first_line = raw_action.split("\n")[0].strip()
-            if "(" in first_line and ")" in first_line:
-                action_str = first_line
-            else:
-                action_str = raw_action
-        else:
-            # Fallback: search for agent.* or standard function calls
-            call_match = re.search(
-                r"((?:agent\.)?(?:click|double_click|right_click|type|press_key|hotkey|scroll|drag_and_drop|wait|launch|finish|click_control|focus_window|maximize_window|minimize_window|close_window)\(.*?\))",
-                text,
-                re.DOTALL | re.IGNORECASE
-            )
-            if call_match:
-                action_str = call_match.group(1).strip()
-
-        action_str = action_str.strip("`").strip()
-
-        # Handle UI-TARS action syntax (e.g. click(start_box='(500, 300)'))
-        if "start_box=" in action_str or "point=" in action_str:
-            coords = self.grounder.extract_coordinates(action_str)
-            if coords:
-                action_str = f"agent.click(x={coords[0]}, y={coords[1]})"
-
-        # Handle UI-TARS type(content='...')
-        uitars_type = re.search(r"type\s*\(\s*(?:content|text)\s*=\s*['\"](.*?)['\"]\s*\)", action_str, re.IGNORECASE)
-        if uitars_type:
-            action_str = f'agent.type(text="{uitars_type.group(1)}")'
-
-        if action_str and not action_str.startswith("agent."):
-            valid_funcs = [
-                "click", "double_click", "right_click", "type", "press_key", "hotkey",
-                "scroll", "drag_and_drop", "wait", "launch", "finish",
-                "click_control", "focus_window", "maximize_window", "minimize_window", "close_window"
-            ]
-            for vf in valid_funcs:
-                if action_str.startswith(f"{vf}("):
-                    action_str = f"agent.{action_str}"
+            raw_action_block = action_match.group(1).strip()
+            # Parse lines and semicolon-separated commands under Action:
+            for line in raw_action_block.split("\n"):
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                # Stop if next section starts
+                if any(line.lower().startswith(p) for p in ["reflection:", "plan:", "thought:"]):
                     break
+                sub_lines = [p.strip() for p in line.split(";") if p.strip()] if ";" in line else [line]
+                for sub in sub_lines:
+                    norm = self._normalize_single_action(sub)
+                    if norm:
+                        actions.append(norm)
+
+        # Fallback if no actions extracted from Action: section
+        if not actions:
+            call_matches = re.findall(
+                r"((?:agent\.)?(?:click|double_click|right_click|type|press_key|hotkey|scroll|drag_and_drop|draw_shape|draw_stroke|wait|launch|finish|request_user_intervention|ask_user|pause_for_user|request_user_takeover|click_control|focus_window|maximize_window|minimize_window|close_window)\(.*?\))",
+                text,
+                re.IGNORECASE
+            )
+            for cm in call_matches:
+                norm = self._normalize_single_action(cm)
+                if norm and norm not in actions:
+                    actions.append(norm)
+
+        # Cap max chain length according to configuration
+        max_chain = getattr(self.config.agent, "max_chain_length", 5)
+        if not getattr(self.config.agent, "allow_action_chaining", True):
+            max_chain = 1
+        actions = actions[:max_chain]
+        primary_action = actions[0] if actions else ""
 
         return {
             "reflection": reflection,
             "plan": plan,
-            "action": action_str,
+            "action": primary_action,
+            "actions": actions,
             "raw": text
         }
 
@@ -248,6 +293,7 @@ class RuXtVisionAgent:
                 x = kwargs.get("x", None)
                 y = kwargs.get("y", None)
                 clear_existing = kwargs.get("clear_existing", False)
+                typing_interval = kwargs.get("typing_interval", kwargs.get("interval", None))
 
                 px, py = None, None
                 if box_id is not None and self.omniparser:
@@ -259,7 +305,7 @@ class RuXtVisionAgent:
                     self.actions.click(px, py)
                     time.sleep(0.15)
 
-                self.actions.type_text(str(text), clear_existing=clear_existing)
+                self.actions.type_text(str(text), clear_existing=clear_existing, typing_interval=float(typing_interval) if typing_interval is not None else None)
                 return f"Typed text: '{str(text)[:20]}...'"
 
             elif func_name == "click_control":
@@ -360,12 +406,151 @@ class RuXtVisionAgent:
                 msg = kwargs.get("message", "Task finished")
                 return f"FINISH: {msg}"
 
+            elif func_name in ["request_user_intervention", "ask_user", "pause_for_user", "request_user_takeover"]:
+                msg = kwargs.get("message", args[0] if len(args) > 0 else "Please complete action on screen and click Continue")
+                return self._handle_user_takeover(str(msg))
+
             else:
                 return f"Unknown action: {func_name}"
 
         except Exception as e:
             logger.error(f"Error executing action {action_call}: {e}", exc_info=True)
             return f"Action execution error: {e}"
+
+    def _get_signal_paths(self, filename: str) -> list:
+        from pathlib import Path
+        import os
+        dirs = []
+        ruxt_data = os.environ.get("RUXT_DATA_DIR")
+        if ruxt_data:
+            dirs.append(Path(ruxt_data))
+            dirs.append(Path(ruxt_data) / "desktop_runs")
+
+        home = Path.home()
+        dirs.append(home / "AppData" / "Roaming" / "RuXt" / "data")
+        dirs.append(home / "AppData" / "Roaming" / "RuXt" / "data" / "desktop_runs")
+        dirs.append(home / "AppData" / "Roaming" / "ruxt-desktop")
+
+        dirs.append(Path(__file__).resolve().parent.parent / "data")
+        dirs.append(Path.cwd() / "data")
+        dirs.append(Path.cwd())
+
+        cfg_dir = getattr(self.config.agent, "data_dir", None)
+        if cfg_dir:
+            dirs.append(Path(cfg_dir))
+
+        paths = []
+        seen = set()
+        for d in dirs:
+            p = d / filename
+            if str(p) not in seen:
+                seen.add(str(p))
+                paths.append(p)
+        return paths
+
+    def _is_aborted(self) -> bool:
+        for p in self._get_signal_paths("abort.signal"):
+            if p.exists():
+                return True
+        return False
+
+    def _handle_user_takeover(self, message: str) -> str:
+        """
+        Safely halts AI mouse/keyboard interaction, yields native control to the human user,
+        and waits for the user to complete the credential / login / CAPTCHA action.
+        """
+        logger.info(f"=== Human-in-the-Loop Takeover Requested: '{message}' ===")
+        # 1. Release AI cursor back to normal so user has native control
+        try:
+            set_ai_cursor(False)
+        except Exception:
+            pass
+
+        # 2. Emit JSON event for RuXt Server & Electron overlay
+        takeover_event = {
+            "event": "waiting_for_user",
+            "message": message,
+            "step": len(self.history) + 1,
+            "status": "waiting_for_user"
+        }
+        if self.on_step_callback:
+            self.on_step_callback(takeover_event)
+
+        # Print directly to stdout for JSON stream consumers
+        try:
+            import sys
+            print(json.dumps(takeover_event), flush=True)
+        except Exception:
+            pass
+
+        # 3. Wait for resume signal file (resume.signal in candidate dirs) or abort signal or timeout (300s)
+        signal_files = self._get_signal_paths("resume.signal")
+        abort_files = self._get_signal_paths("abort.signal")
+
+        for sf in signal_files:
+            try:
+                sf.parent.mkdir(parents=True, exist_ok=True)
+                if sf.exists():
+                    sf.unlink()
+            except Exception:
+                pass
+
+        start_wait = time.time()
+        max_wait = 300.0  # 5 minutes timeout
+        logger.info(f"Agent safely paused waiting for user input (max {int(max_wait)}s)...")
+
+        resumed = False
+        aborted = False
+        while time.time() - start_wait < max_wait:
+            for af in abort_files:
+                if af.exists():
+                    logger.info("Abort signal detected during user takeover! Halting execution.")
+                    aborted = True
+                    break
+            if aborted:
+                break
+
+            for sf in signal_files:
+                if sf.exists():
+                    logger.info(f"Resume signal detected at '{sf}'! User completed required action.")
+                    try:
+                        sf.unlink()
+                    except Exception:
+                        pass
+                    resumed = True
+                    break
+            if resumed:
+                break
+            time.sleep(0.3)
+
+        if aborted:
+            return "USER_INTERVENTION_ABORTED"
+
+        if resumed:
+            logger.info("Immediately capturing fresh post-intervention screenshot...")
+            try:
+                # Immediate post-takeover screenshot
+                fresh_obs = self.observer.capture(resize_for_model=True)
+                shot_event = {
+                    "event": "screenshot_captured",
+                    "message": "📸 Fresh screenshot captured. Analyzing UI to continue...",
+                    "step": len(self.history) + 1
+                }
+                if self.on_step_callback:
+                    self.on_step_callback(shot_event)
+                print(json.dumps(shot_event), flush=True)
+            except Exception as shot_err:
+                logger.warning(f"Failed to capture fresh post-resume screenshot immediately: {shot_err}")
+
+            # Restore AI cursor and brief delay for UI to settle
+            try:
+                set_ai_cursor(True)
+            except Exception:
+                pass
+            time.sleep(0.3)
+            return f"USER_INTERVENTION_COMPLETED: {message}"
+        else:
+            return f"USER_INTERVENTION_TIMEOUT: No user input detected within {int(max_wait)}s"
 
     def run_task(self, task: str) -> Dict[str, Any]:
         """
@@ -375,6 +560,13 @@ class RuXtVisionAgent:
         logger.info(f"=== Starting RuXt Vision Task: '{task}' ===")
         self.history = []
         max_steps = self.config.agent.max_steps
+
+        # Clear any stale abort signals
+        for ap in self._get_signal_paths("abort.signal"):
+            try:
+                if ap.exists(): ap.unlink()
+            except Exception:
+                pass
 
         # Start AI Ghost Cursor overlay ONLY if ghost mode is explicitly configured
         use_ghost = (
@@ -389,10 +581,14 @@ class RuXtVisionAgent:
             set_ai_cursor(True)
         try:
             for step in range(1, max_steps + 1):
+                if self._is_aborted():
+                    logger.info("Task aborted by user via abort signal.")
+                    return {"success": False, "message": "Task aborted by user", "history": self.history}
+
                 logger.info(f"--- Step {step}/{max_steps} ---")
                 
-                # 1. OBSERVE Screen
-                obs = self.observer.capture(resize_for_model=False)
+                # 1. OBSERVE Screen (Downsampled & compressed for high-speed LLM inference)
+                obs = self.observer.capture(resize_for_model=True)
                 
                 # 2. MICROSOFT OMNIPARSER v2 SET-OF-MARKS TAGGING
                 som_summary = ""
@@ -417,14 +613,40 @@ class RuXtVisionAgent:
                         logger.warning(f"OmniParser tagging warning: {som_err}")
 
                 # 3. PROMPT & PLAN
+                open_windows = self.observer.get_visible_windows()
                 user_prompt = format_worker_user_prompt(
                     task=task,
                     step_num=step,
                     max_steps=max_steps,
                     active_window=obs.active_window_title,
                     history=self.history,
-                    som_summary=som_summary
+                    som_summary=som_summary,
+                    open_windows=open_windows
                 )
+
+                last_was_intervention = (
+                    len(self.history) > 0 and 
+                    "USER_INTERVENTION_" in str(self.history[-1].get("result", ""))
+                )
+                if last_was_intervention:
+                    user_prompt += (
+                        "\n\n[IMPORTANT STATUS: The user has completed the requested credential/login/action "
+                        "and clicked Continue. The attached screenshot is a BRAND-NEW capture taken immediately after "
+                        "the user's action. Observe the updated screen, verify the login/form state, and proceed with "
+                        f"the NEXT required action towards the task goal: '{task}'. Do not ask for user intervention "
+                        "again unless a fresh, uncompleted security challenge is clearly visible.]"
+                    )
+
+                last_was_halted = (
+                    len(self.history) > 0 and 
+                    "CHAIN_HALTED" in str(self.history[-1].get("result", ""))
+                )
+                if last_was_halted:
+                    user_prompt += (
+                        "\n\n[ATTENTION: The previous action chain was automatically halted early because an unexpected UI state, "
+                        "modal popup, or window shift appeared on screen. The attached screenshot shows the CURRENT screen state. "
+                        "Inspect the screen carefully, address any new dialogs, popups, or state changes, and plan your next action accordingly.]"
+                    )
 
                 try:
                     llm_response = self.llm.generate(
@@ -446,18 +668,89 @@ class RuXtVisionAgent:
                     return {"success": False, "error": str(e), "history": self.history}
 
                 parsed = self._parse_response(llm_response)
-                action_code = parsed["action"]
+                actions_chain = parsed.get("actions", [])
+                if not actions_chain and parsed.get("action"):
+                    actions_chain = [parsed["action"]]
 
-                # 4. ACT & GROUND
-                action_result = self._execute_parsed_action(action_code)
-                is_finished = "FINISH:" in action_result
+                # 4. ACT & GROUND (Adaptive Batch Execution for Action Chaining)
+                results = []
+                is_finished = False
+                initial_hwnd = self.observer.get_foreground_hwnd()
+                initial_title = self.observer.get_active_window_title()
+
+                for idx, act in enumerate(actions_chain):
+                    if not act:
+                        continue
+                    if self._is_aborted():
+                        logger.info("Aborting action chain due to abort signal.")
+                        return {"success": False, "message": "Task aborted by user", "history": self.history}
+
+                    # Adaptive Safety Guard: Pre-condition check for subsequent chained actions
+                    if idx > 0:
+                        current_hwnd = self.observer.get_foreground_hwnd()
+                        current_title = self.observer.get_active_window_title()
+
+                        # 1. Check if an unexpected window, modal dialog, or popup took foreground focus
+                        is_window_mgmt = any(
+                            act.strip().startswith(prefix) for prefix in [
+                                "agent.focus_window", "agent.close_window", 
+                                "agent.maximize_window", "agent.minimize_window",
+                                "focus_window", "close_window", "maximize_window", "minimize_window"
+                            ]
+                        )
+                        if initial_hwnd and current_hwnd and current_hwnd != initial_hwnd and not is_window_mgmt:
+                            if current_title != initial_title:
+                                logger.warning(
+                                    f"Adaptive Guard: Foreground window shifted from '{initial_title}' to '{current_title}' after action {idx}. "
+                                    f"Halting remaining chain to capture fresh screen."
+                                )
+                                results.append(f"CHAIN_HALTED: Unexpected window/modal appeared ('{current_title}'). Re-observing screen.")
+                                break
+
+                        # 2. Check for transition boundary: consecutive clicks across changing state
+                        prev_act = actions_chain[idx - 1]
+                        is_prev_click = "click(" in prev_act and "double_click" not in prev_act and "right_click" not in prev_act
+                        is_curr_click = "click(" in act and "double_click" not in act and "right_click" not in act
+                        if is_prev_click and is_curr_click and current_title != initial_title:
+                            logger.warning(
+                                f"Adaptive Guard: Window state changed after click from '{initial_title}' to '{current_title}'. "
+                                f"Halting chain before next click."
+                            )
+                            results.append(f"CHAIN_HALTED: Window title changed after click ('{current_title}'). Re-observing screen.")
+                            break
+
+                    logger.info(f"Executing chain action [{idx+1}/{len(actions_chain)}]: {act}")
+                    res = self._execute_parsed_action(act)
+                    results.append(res)
+                    if "USER_INTERVENTION_ABORTED" in res:
+                        logger.info("User intervention aborted by user. Exiting task.")
+                        return {"success": False, "message": "Task aborted by user", "history": self.history}
+                    if "FINISH:" in res:
+                        is_finished = True
+                        break
+                    if "USER_INTERVENTION_" in res:
+                        logger.info(f"Human intervention event completed ({res}). Breaking batch to observe updated screen.")
+                        break
+                    if "Failed to ground" in res or "execution error" in res.lower():
+                        logger.warning(f"Action '{act}' halted early: {res}. Pausing batch to refresh screen observation.")
+                        break
+                    if idx < len(actions_chain) - 1:
+                        time.sleep(self.config.execution.action_delay)
+
+                executed_count = len(results)
+                if executed_count < len(actions_chain):
+                    action_summary = " ; ".join(actions_chain[:executed_count]) + f" [HALTED {len(actions_chain) - executed_count} REMAINING FOR FRESH OBSERVATION]"
+                else:
+                    action_summary = " ; ".join(actions_chain) if len(actions_chain) > 1 else (actions_chain[0] if actions_chain else "none")
+                result_summary = " | ".join(results) if results else "No action executed"
 
                 step_data = {
                     "step": step,
                     "reflection": parsed["reflection"],
                     "plan": parsed["plan"],
-                    "action": action_code,
-                    "result": action_result,
+                    "action": action_summary,
+                    "actions": actions_chain,
+                    "result": result_summary,
                     "status": "completed" if is_finished else "in_progress",
                     "active_window": obs.active_window_title
                 }
@@ -467,8 +760,8 @@ class RuXtVisionAgent:
                     self.on_step_callback(step_data)
 
                 if is_finished:
-                    logger.info(f"Task completed successfully at step {step}: {action_result}")
-                    return {"success": True, "message": action_result, "history": self.history}
+                    logger.info(f"Task completed successfully at step {step}: {result_summary}")
+                    return {"success": True, "message": result_summary, "history": self.history}
 
                 time.sleep(self.config.execution.action_delay)
 

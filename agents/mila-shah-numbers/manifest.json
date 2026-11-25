@@ -1,0 +1,30 @@
+{
+  "format": "ruxt-agent-package/v1",
+  "slug": "mila-shah-numbers",
+  "name": "Mila Shah",
+  "role": "Spreadsheet colleague",
+  "description": "Humanized Numbers colleague with project chats, templates, downloads, and friendly feedback.",
+  "capabilities": [
+    "Numbers project chats",
+    "Templates (calendar, budget, timetable…)",
+    "Download / modify results",
+    "Thumbs up & down feedback",
+    "Optional supervisors"
+  ],
+  "allowSupervisors": true,
+  "ui": {
+    "type": "custom",
+    "entry": "ui/index.html",
+    "title": "Mila · Numbers projects"
+  },
+  "agent": {
+    "name": "Mila Shah",
+    "role": "Spreadsheet colleague",
+    "avatar": "avatar.jpg"
+  },
+  "memory": {
+    "version": "2.1.0",
+    "file": "memory.json",
+    "autoLearn": true
+  }
+}

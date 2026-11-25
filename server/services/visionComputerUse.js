@@ -13,13 +13,50 @@ import { notifyTaskOutcome } from './taskOutcomeExplainer.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const dataDir = process.env.RUXT_DATA_DIR || (process.env.APPDATA ? path.join(process.env.APPDATA, 'RuXt', 'data') : path.resolve(__dirname, '../../data'));
+const appData = process.env.APPDATA || (process.env.USERPROFILE ? path.join(process.env.USERPROFILE, 'AppData', 'Roaming') : '');
+const fallbackDataDir = appData ? path.join(appData, 'RuXt', 'data') : path.resolve(__dirname, '../../data');
+const rawDataDir = process.env.RUXT_DATA_DIR || fallbackDataDir;
+const dataDir = rawDataDir.includes('app.asar') ? rawDataDir.replace('app.asar', 'app.asar.unpacked') : rawDataDir;
 const runsDir = path.join(dataDir, 'desktop_runs');
 const rawPs1Path = path.join(__dirname, 'windowsOperator.ps1');
 const winOperatorPs1 = rawPs1Path.includes('app.asar') ? rawPs1Path.replace('app.asar', 'app.asar.unpacked') : rawPs1Path;
 
 if (!fs.existsSync(runsDir)) {
-  fs.mkdirSync(runsDir, { recursive: true });
+  try { fs.mkdirSync(runsDir, { recursive: true }); } catch (_) {}
+}
+
+export function getSignalFilePaths(filename) {
+  const dirs = [];
+  if (runsDir && !runsDir.includes('app.asar')) dirs.push(runsDir);
+  if (dataDir && !dataDir.includes('app.asar')) dirs.push(dataDir);
+  
+  if (process.env.APPDATA) {
+    dirs.push(path.join(process.env.APPDATA, 'RuXt', 'data'));
+    dirs.push(path.join(process.env.APPDATA, 'ruxt-desktop'));
+    dirs.push(path.join(process.env.APPDATA, 'RuXt', 'data', 'desktop_runs'));
+  }
+  
+  const projData = path.resolve(__dirname, '../../RuXt-AI-Vision-Desktop/data');
+  if (!projData.includes('app.asar')) dirs.push(projData);
+
+  const rootData = path.resolve(__dirname, '../../data');
+  if (!rootData.includes('app.asar')) dirs.push(rootData);
+
+  const uniqueDirs = [...new Set(dirs)];
+  return uniqueDirs.map(d => path.join(d, filename));
+}
+
+export function cleanupSignals() {
+  const signalFiles = [
+    ...getSignalFilePaths('resume.signal'),
+    ...getSignalFilePaths('abort.signal')
+  ];
+  for (const sf of signalFiles) {
+    if (sf.includes('app.asar')) continue;
+    try {
+      if (fs.existsSync(sf)) fs.unlinkSync(sf);
+    } catch (_) {}
+  }
 }
 
 export function runWindowsAction(args = []) {
@@ -137,6 +174,40 @@ export function stopScreenBorder() {
   runWindowsAction(['-Action', 'stop_border']).catch(() => {});
 }
 
+export function resumeVisionDesktopJob(jobId = null) {
+  try {
+    const candidates = getSignalFilePaths('resume.signal');
+    let written = 0;
+    for (const p of candidates) {
+      if (p.includes('app.asar')) continue;
+      try {
+        const dir = path.dirname(p);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(p, `resume:${Date.now()}`);
+        written++;
+      } catch (err) {
+        console.warn(`[Vision Computer Use] Could not write resume signal to ${p}:`, err.message);
+      }
+    }
+    console.log(`[Vision Computer Use] Dispatched resume signal to ${written} candidate files`);
+
+    for (const [id, job] of activeDesktopJobs.entries()) {
+      if (!jobId || id === jobId) {
+        job.lifecycleState = TaskLifecycleState.EXECUTING;
+        for (const res of job.subscribers) {
+          try {
+            res.write(`data: ${JSON.stringify({ type: 'resumed', jobId: id })}\n\n`);
+          } catch (_) {}
+        }
+      }
+    }
+    return true;
+  } catch (err) {
+    console.error('[Vision Computer Use] Resume error:', err);
+    return false;
+  }
+}
+
 export function setAiCursor(active = true) {
   if (active) {
     const candidates = [
@@ -180,6 +251,7 @@ export async function startVisionDesktopExecution({
   sessionId = null,
   onEvent = () => {}
 }) {
+  cleanupSignals();
   const jobId = randomUUID();
   const jobDir = path.join(runsDir, jobId);
   if (!fs.existsSync(jobDir)) fs.mkdirSync(jobDir, { recursive: true });
@@ -301,9 +373,7 @@ export async function startVisionDesktopExecution({
             path.join(localApp, 'Programs', 'Python', 'Python312', 'python.exe'),
             path.join(localApp, 'Programs', 'Python', 'Python311', 'python.exe'),
             path.join(localApp, 'Programs', 'Python', 'Python310', 'python.exe'),
-            'C:\\Python314\\python.exe',
-            'C:\\Python313\\python.exe',
-            'C:\\Python312\\python.exe'
+            path.join(localApp, 'Microsoft', 'WindowsApps', 'python.exe')
           ];
           for (const pc of pyCandidates) {
             if (fs.existsSync(pc)) {
@@ -320,8 +390,9 @@ export async function startVisionDesktopExecution({
         if (!fs.existsSync(scriptPath)) {
           const altPaths = [
             path.join(process.resourcesPath || '', 'app.asar.unpacked', 'RuXt-AI-Vision-Desktop', 'run_agent.py'),
+            path.join(process.resourcesPath || '', 'RuXt-AI-Vision-Desktop', 'run_agent.py'),
             path.join(process.env.LOCALAPPDATA || '', 'Programs', 'RuXt AI Studio', 'resources', 'app.asar.unpacked', 'RuXt-AI-Vision-Desktop', 'run_agent.py'),
-            'c:\\xampp\\htdocs\\ruxt_2.1\\RuXt-AI-Vision-Desktop\\run_agent.py'
+            path.join(process.cwd(), 'RuXt-AI-Vision-Desktop', 'run_agent.py')
           ];
           for (const ap of altPaths) {
             if (ap && fs.existsSync(ap)) {
@@ -381,6 +452,23 @@ export async function startVisionDesktopExecution({
                     type: 'log',
                     jobId,
                     text: `[Agent-S Step ${parsed.step}] Action: ${parsed.action} | Result: ${parsed.result}`
+                  });
+                } else if (parsed.event === 'screenshot_captured' || parsed.event === 'resumed') {
+                  broadcast({
+                    type: 'step_start',
+                    jobId,
+                    description: parsed.message || '📸 Fresh screenshot captured. Analyzing UI to continue...',
+                    actionIcon: '📸',
+                    progress: 50
+                  });
+                } else if (parsed.event === 'waiting_for_user') {
+                  completionController.transitionTo(TaskLifecycleState.WAITING_FOR_USER, parsed.message);
+                  broadcast({
+                    type: 'waiting_for_user',
+                    jobId,
+                    message: parsed.message || 'Please complete action on screen and click Continue',
+                    description: parsed.message || 'Please complete action on screen and click Continue',
+                    actionIcon: '🔑'
                   });
                 } else if (parsed.event === 'finish') {
                   if (parsed.success) {
@@ -513,7 +601,8 @@ export async function startVisionDesktopExecution({
           await clickMouse('left');
           await new Promise(r => setTimeout(r, 150));
 
-          await clipboardPasteText(stepDef.content || taskContract.contentPayload?.generatedContent || '');
+          // Sequential letter-by-letter typing with authentic keystroke pacing
+          await typeTextUnicode(stepDef.content || taskContract.contentPayload?.generatedContent || '', 20);
           await new Promise(r => setTimeout(r, 350));
         } else if (stepDef.action === 'save_file') {
           const filePath = stepDef.filePath || taskContract.contentPayload?.saveFilePath;
@@ -582,9 +671,9 @@ export async function startVisionDesktopExecution({
             completionController.recordEvidence('text_in_document', vDoc);
             broadcast({ type: 'log', jobId, text: `✅ [Verification Succeeded] Document text verified! (${vDoc.length} characters written)` });
           } else {
-            // Recovery: paste content again
-            completionController.transitionTo(TaskLifecycleState.RECOVERING, 'Re-pasting content into document');
-            broadcast({ type: 'log', jobId, text: `[Recovery Engine] Re-pasting story into editor...` });
+            // Recovery: type content letter-by-letter again
+            completionController.transitionTo(TaskLifecycleState.RECOVERING, 'Re-typing content into document');
+            broadcast({ type: 'log', jobId, text: `[Recovery Engine] Re-typing content into editor...` });
             const targetProc = stepDef.processName || 'notepad';
             const winCenter = await getWindowCenter(targetProc);
             if (winCenter) {
@@ -592,7 +681,7 @@ export async function startVisionDesktopExecution({
               await clickMouse('left');
               await new Promise(r => setTimeout(r, 150));
             }
-            await clipboardPasteText(taskContract.contentPayload?.generatedContent || '');
+            await typeTextUnicode(taskContract.contentPayload?.generatedContent || '', 20);
             await new Promise(r => setTimeout(r, 400));
             const vRetry = await TaskVerificationEngine.verifyDocumentContent({ minLength: 10 });
             if (vRetry.verified) {

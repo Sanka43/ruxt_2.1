@@ -13,8 +13,47 @@ const isPackaged = __dirname.includes('app.asar');
 const writableDataDir = process.env.RUXT_DATA_DIR || (process.env.APPDATA ? path.join(process.env.APPDATA, 'RuXt', 'data') : path.resolve(appRootDir, 'data'));
 
 const router = Router();
-const agentsDir = process.env.RUXT_AGENTS_DIR || (isPackaged ? path.join(writableDataDir, 'agents') : path.resolve(appRootDir, 'agents'));
-const packagesDir = path.join(agentsDir, 'packages');
+const userAgentsDir = path.join(writableDataDir, 'agents');
+
+function resolveBundledAgentsDir() {
+  if (process.env.RUXT_AGENTS_DIR && fs.existsSync(process.env.RUXT_AGENTS_DIR)) {
+    return process.env.RUXT_AGENTS_DIR;
+  }
+  const candidates = [
+    path.resolve(appRootDir, 'agents'),
+    process.resourcesPath ? path.join(process.resourcesPath, 'app.asar.unpacked', 'agents') : null,
+    process.resourcesPath ? path.join(process.resourcesPath, 'agents') : null,
+    path.join(process.cwd(), 'agents')
+  ].filter(Boolean);
+
+  for (const cand of candidates) {
+    if (fs.existsSync(cand)) return cand;
+  }
+  return path.resolve(appRootDir, 'agents');
+}
+
+const bundledAgentsDir = resolveBundledAgentsDir();
+
+function resolvePackagesDir() {
+  if (process.env.RUXT_PACKAGES_DIR && fs.existsSync(process.env.RUXT_PACKAGES_DIR)) {
+    return process.env.RUXT_PACKAGES_DIR;
+  }
+  const candidates = [
+    path.join(bundledAgentsDir, 'packages'),
+    process.resourcesPath ? path.join(process.resourcesPath, 'app.asar.unpacked', 'agents', 'packages') : null,
+    process.resourcesPath ? path.join(process.resourcesPath, 'agents', 'packages') : null,
+    path.resolve(appRootDir, 'agents', 'packages'),
+    path.join(userAgentsDir, 'packages')
+  ].filter(Boolean);
+
+  for (const cand of candidates) {
+    if (fs.existsSync(cand)) return cand;
+  }
+  return path.join(bundledAgentsDir, 'packages');
+}
+
+const packagesDir = resolvePackagesDir();
+const agentsDir = userAgentsDir; // newly installed agents should always be saved to userAgentsDir
 const avatarsDir = isPackaged ? path.join(writableDataDir, 'agent-avatars') : path.resolve(appRootDir, 'public', 'agent-avatars');
 
 function isValidSlug(slug) {
@@ -114,16 +153,276 @@ const CATALOG = [
     packageFile: 'elena-voss-chess.ruxt',
     version: '1.0.0',
     featured: false
+  },
+  {
+    slug: 'damon-cole',
+    name: 'Damon Cole',
+    role: 'Lead Backend & Distributed Systems Engineer',
+    headline: 'High-Throughput APIs, Node.js, PostgreSQL, Redis Caching & Microservices',
+    category: 'Engineering',
+    experience: '8+ Years',
+    isLeader: false,
+    rating: 4.97,
+    reviews: 58,
+    avatar: '/agent-avatars/damon-cole.png',
+    bio: 'Damon specializes in resilient backend architectures, low-latency microservices, relational database query optimization, Redis caching patterns, and Docker containerization.',
+    skills: ['Node.js', 'PostgreSQL', 'Redis', 'Docker', 'Microservices', 'REST & gRPC', 'Kafka', 'System Architecture'],
+    packageFile: 'damon-cole.ruxt',
+    version: '1.0.0',
+    featured: true
+  },
+  {
+    slug: 'search-console-manager',
+    name: 'Search Console Manager',
+    role: 'SEO & Search Traffic Specialist',
+    headline: 'Google Search Console, Keyword Ranking, CTR Growth & Indexing Optimization',
+    category: 'Marketing & SEO',
+    experience: 'Specialist',
+    isLeader: false,
+    rating: 4.95,
+    reviews: 34,
+    avatar: '/agent-avatars/search-console-manager.png',
+    bio: 'Autonomous search intelligence specialist dedicated to maximizing organic click-through rates, monitoring index coverage, surfacing query opportunities, and auditing search performance.',
+    skills: ['Google Search Console', 'Organic Traffic', 'SERP Analysis', 'Keyword Optimization', 'Index Coverage', 'CTR Growth'],
+    packageFile: 'search-console-manager.ruxt',
+    version: '1.0.0',
+    featured: false
+  },
+  {
+    slug: 'numbers',
+    name: 'Numbers',
+    role: 'Quantitative Analytics & Mathematical Modeling',
+    headline: 'Advanced Statistical Modeling, Algorithmic Analysis & Data Synthesis',
+    category: 'Analytics & Math',
+    experience: 'Quantitative Core',
+    isLeader: false,
+    rating: 4.93,
+    reviews: 29,
+    avatar: '/agent-avatars/numbers.png',
+    bio: 'Numbers provides rigorous quantitative and statistical computing, probability analysis, algorithmic modeling, and data evaluation.',
+    skills: ['Mathematical Modeling', 'Statistical Analysis', 'Quantitative Computing', 'Probability', 'Algorithm Evaluation'],
+    packageFile: 'numbers.ruxt',
+    version: '1.0.0',
+    featured: false
+  },
+  {
+    slug: 'capcut-agent',
+    name: 'CineCut Studio (CapCut Pro)',
+    role: 'Autonomous Video Editing & Viral Content Creator',
+    headline: 'Zero-Mouse Draft Synthesis, Auto-Captions, Viral Cuts & Desktop Launch',
+    category: 'Video & Creative Media',
+    experience: 'Specialist',
+    isLeader: false,
+    rating: 4.99,
+    reviews: 48,
+    avatar: '/ruxt-logo.png',
+    bio: 'Specialized in high-speed zero-mouse CapCut Desktop draft synthesis, auto-captions, vertical 9:16 reels, audio-video syncing, and automated desktop launching.',
+    skills: ['CapCut Draft Synthesis', 'Auto-Captions & Subtitle Sync', 'Multi-Track Video Cutting', '9:16 Shorts & Reels', 'Zero-Mouse Desktop Control'],
+    packageFile: 'capcut-agent.ruxt',
+    version: '1.0.0',
+    featured: true
+  },
+  {
+    slug: 'blender-agent',
+    name: 'Blender 3D Master',
+    role: 'Autonomous 3D Modeler & Scene Architect',
+    headline: 'Zero-Mouse 3D Modeling, Shading, Lighting & Render MCP Engine',
+    category: '3D & Creative Media',
+    experience: 'Specialist',
+    isLeader: false,
+    rating: 4.98,
+    reviews: 42,
+    avatar: '/agent-avatars/blender-agent.png',
+    bio: 'Autonomous Blender 3D specialist equipped with Model Context Protocol (MCP). Generates primitives, procedural shaders, lighting setups, and automated renders directly via Python bpy or background CLI.',
+    skills: ['3D Modeling', 'Blender MCP Tools', 'Procedural Shading', 'Lighting & Camera Setup', 'Render Optimization'],
+    packageFile: 'blender-agent.ruxt',
+    version: '1.1.0',
+    featured: true
+  },
+  {
+    slug: 'donald-trump-supervisor',
+    name: 'Donald Trump',
+    role: 'Executive Quality Supervisor',
+    headline: 'Autonomous Quality Review, Scoring (0-100) & Strict Deliverable Supervision',
+    category: 'Supervision & Executive QA',
+    experience: 'Executive',
+    isLeader: false,
+    rating: 5.0,
+    reviews: 240,
+    avatar: '/agent-avatars/donald-trump-supervisor.jpg',
+    bio: 'Supervises other agents with total authority, relentless standards, and unmistakable style. Audits completed tasks, flags critical errors, computes 0-100 quality scores, and orders fixes with Trumpian precision.',
+    skills: ['Executive Supervision', 'Quality Scoring', 'Strict QA Review', 'Deliverable Verification', 'Trump Persona'],
+    packageFile: 'donald-trump-supervisor.ruxt',
+    version: '2.1.0',
+    featured: true
+  },
+  {
+    slug: 'nora-vale-figma',
+    name: 'Nora Vale',
+    role: 'Figma UI/UX Design Master',
+    headline: 'Autonomous Figma Desktop Bridge, Design Systems, Mobile Frames & Vector Prototyping',
+    category: 'UI/UX & Design',
+    experience: 'Lead Designer',
+    isLeader: false,
+    rating: 4.99,
+    reviews: 112,
+    avatar: '/agent-avatars/nora-vale-figma.svg',
+    bio: 'Nora drives the Figma desktop application directly, crafting responsive mobile screens (390x844), design tokens, reusable component libraries, and interactive prototypes with verified visual polish.',
+    skills: ['Figma Desktop Bridge', 'Design Systems', 'Mobile App UI (390x844)', 'Design Tokens', 'SVG Vector Assets', 'Interactive Prototypes'],
+    packageFile: 'nora-vale-figma.ruxt',
+    version: '2.1.0',
+    featured: true
+  },
+  {
+    slug: 'mrbeast-youtube-coach',
+    name: 'Jimmy Donaldson (MrBeast)',
+    role: 'YouTube Growth & Viral Retention Coach',
+    headline: 'Extreme CTR Optimization, First-5-Seconds Hook Engineering & Viral Storytelling',
+    category: 'Media & Growth Strategy',
+    experience: 'YouTube Pioneer',
+    isLeader: false,
+    rating: 4.99,
+    reviews: 185,
+    avatar: '/agent-avatars/mrbeast-youtube-coach.png',
+    bio: 'World-renowned creator coach specializing in thumbnail CTR psychology, opening hook engineering, pacing retention graphs, and viral title ideation.',
+    skills: ['Thumbnail CTR Strategy', 'First 5-Second Hooks', 'Retention Graph Optimization', 'Viral Title Engineering', 'Pacing & Scripting'],
+    packageFile: 'mrbeast-youtube-coach.ruxt',
+    version: '2.1.0',
+    featured: true
+  },
+  {
+    slug: 'nova-quinn-cursor',
+    name: 'Nova Quinn',
+    role: 'Cursor IDE Fullstack Architect',
+    headline: 'Next-Gen AI-First IDE Automation, Fast Refactoring & Architecture Synthesis',
+    category: 'Software Engineering',
+    experience: 'Senior Architect',
+    isLeader: false,
+    rating: 4.97,
+    reviews: 88,
+    avatar: '/agent-avatars/nova-quinn-cursor.png',
+    bio: 'Elite fullstack architect fluent in Cursor workflows, TypeScript, Rust, fast refactoring loops, and production architectural spikes.',
+    skills: ['Cursor IDE Workflows', 'TypeScript & Rust', 'Fullstack Refactoring', 'Architecture Spikes', 'Clean Code Synthesis'],
+    packageFile: 'nova-quinn-cursor.ruxt',
+    version: '2.1.0',
+    featured: false
+  },
+  {
+    slug: 'mila-shah-numbers',
+    name: 'Mila Shah',
+    role: 'Financial Analyst & Spreadsheet Modeler',
+    headline: 'Autonomous Financial Modeling, DCF Valuation & Apple Numbers Automation',
+    category: 'Finance & Analytics',
+    experience: 'Senior Analyst',
+    isLeader: false,
+    rating: 4.96,
+    reviews: 76,
+    avatar: '/agent-avatars/mila-shah-numbers.jpg',
+    bio: 'Quantitative financial modeling expert crafting automated DCF valuation models, unit economics dashboards, and structured spreadsheets.',
+    skills: ['Financial Modeling', 'DCF Valuation', 'Apple Numbers / Excel', 'Cap Table Management', 'Data Visualization'],
+    packageFile: 'mila-shah-numbers.ruxt',
+    version: '2.1.0',
+    featured: false
+  },
+  {
+    slug: 'pico-vale-cartoon',
+    name: 'Pico Vale',
+    role: 'Cartoon & Character Animator',
+    headline: 'Vector Cartoon Character Design, Frame Animation & Expressive Visual Assets',
+    category: 'Animation & Character Art',
+    experience: 'Animator',
+    isLeader: false,
+    rating: 4.94,
+    reviews: 49,
+    avatar: '/agent-avatars/pico-vale-cartoon.svg',
+    bio: 'Creative character animator producing expressive cartoon mascots, vector storyboard frames, and delightful motion design assets.',
+    skills: ['Cartoon Character Art', 'Vector Rigging', 'Storyboarding', 'Expressive Color Palettes', 'Motion Design'],
+    packageFile: 'pico-vale-cartoon.ruxt',
+    version: '2.1.0',
+    featured: false
+  },
+  {
+    slug: 'rex-calder-codex',
+    name: 'Rex Calder',
+    role: 'Codex CLI Specialist',
+    headline: 'Command Line Automation, Ephemeral Execution Environments & Tool Integration',
+    category: 'Developer Tools',
+    experience: 'CLI Specialist',
+    isLeader: false,
+    rating: 4.93,
+    reviews: 52,
+    avatar: '/agent-avatars/rex-calder-codex.png',
+    bio: 'Master of developer CLI tooling, headless test orchestration, sandboxed execution, and ephemeral shell pipelines.',
+    skills: ['Codex CLI Automation', 'Shell Scripting', 'Ephemeral Sandboxing', 'Test Suites', 'CI/CD Pipelines'],
+    packageFile: 'rex-calder-codex.ruxt',
+    version: '2.1.0',
+    featured: false
+  },
+  {
+    slug: 'lina-park-blender-desktop',
+    name: 'Lina Park',
+    role: 'Desktop 3D Modeler & Blender Specialist',
+    headline: 'Native Blender 3D Application Driving, Hard-Surface Modeling & Viewport Automation',
+    category: '3D & Creative Media',
+    experience: '3D Lead',
+    isLeader: false,
+    rating: 4.98,
+    reviews: 67,
+    avatar: '/agent-avatars/lina-park-blender-desktop.jpg',
+    bio: 'Specialist in controlling the desktop Blender interface, hard-surface CAD modeling, PBR material nodes, and camera composition.',
+    skills: ['Desktop Blender Automation', 'Hard Surface Modeling', 'PBR Materials', 'Camera Blocking', 'Render Optimization'],
+    packageFile: 'lina-park-blender-desktop.ruxt',
+    version: '2.1.0',
+    featured: true
   }
 ];
 
 // Helper to check if agent is installed locally
 function isAgentInstalled(slug) {
-  const targetDir = path.join(agentsDir, slug);
-  if (!fs.existsSync(targetDir)) return false;
-  const manifestPath = path.join(targetDir, 'manifest.json');
-  const agentMdPath = path.join(targetDir, 'agent.md');
-  return fs.existsSync(manifestPath) || fs.existsSync(agentMdPath);
+  if (slug === 'ruxt') return true;
+  const inUser = path.join(userAgentsDir, slug);
+  if (fs.existsSync(inUser) && (fs.existsSync(path.join(inUser, 'manifest.json')) || fs.existsSync(path.join(inUser, 'agent.md')))) {
+    return true;
+  }
+  return false;
+}
+
+const AVATAR_EXTS = ['.png', '.jpg', '.jpeg', '.svg', '.webp'];
+
+function resolveAgentAvatar(slug, targetDir = null) {
+  for (const ext of AVATAR_EXTS) {
+    if (fs.existsSync(path.join(avatarsDir, `${slug}${ext}`))) {
+      return `/agent-avatars/${slug}${ext}`;
+    }
+  }
+  if (targetDir) {
+    for (const ext of AVATAR_EXTS) {
+      const local = path.join(targetDir, `avatar${ext}`);
+      if (fs.existsSync(local)) {
+        try {
+          if (!fs.existsSync(avatarsDir)) fs.mkdirSync(avatarsDir, { recursive: true });
+          fs.copyFileSync(local, path.join(avatarsDir, `${slug}${ext}`));
+          return `/agent-avatars/${slug}${ext}`;
+        } catch (_) {}
+      }
+    }
+  }
+  return '/ruxt-logo.png';
+}
+
+function copyLocalAvatarIfPresent(targetDir, slug) {
+  if (!fs.existsSync(targetDir)) return null;
+  for (const ext of AVATAR_EXTS) {
+    const local = path.join(targetDir, `avatar${ext}`);
+    if (fs.existsSync(local)) {
+      try {
+        if (!fs.existsSync(avatarsDir)) fs.mkdirSync(avatarsDir, { recursive: true });
+        fs.copyFileSync(local, path.join(avatarsDir, `${slug}${ext}`));
+        return `/agent-avatars/${slug}${ext}`;
+      } catch (_) {}
+    }
+  }
+  return null;
 }
 
 // Helper to archive/pack an agent folder into a standard .ruxt package
@@ -193,19 +492,7 @@ router.get('/agents', (req, res) => {
           isCustom: true,
           rating: manifest.rating || 5.0,
           reviews: manifest.reviews || 1,
-          avatar: fs.existsSync(path.join(avatarsDir, `${slug}.png`)) 
-            ? `/agent-avatars/${slug}.png` 
-            : (() => {
-                const targetLocal = path.join(targetDir, 'avatar.png');
-                if (fs.existsSync(targetLocal)) {
-                  try {
-                    if (!fs.existsSync(avatarsDir)) fs.mkdirSync(avatarsDir, { recursive: true });
-                    fs.copyFileSync(targetLocal, path.join(avatarsDir, `${slug}.png`));
-                    return `/agent-avatars/${slug}.png`;
-                  } catch (_) {}
-                }
-                return '/ruxt-logo.png';
-              })(),
+          avatar: resolveAgentAvatar(slug, targetDir),
           bio: manifest.description || `Custom agent ${agentName} built in RuXt Studio.`,
           skills: manifest.skills || (manifest.capabilities || ['Task Execution']),
           packageFile: `${slug}.ruxt`,
@@ -230,13 +517,25 @@ router.get('/download/:slug', (req, res) => {
   }
   const candidateNames = [`${slug}.ruxt`, `${slug}.🔰`, `${slug}.zip`];
   let packagePath = null;
+  const searchDirs = [
+    packagesDir,
+    path.join(bundledAgentsDir, 'packages'),
+    process.resourcesPath ? path.join(process.resourcesPath, 'app.asar.unpacked', 'agents', 'packages') : null,
+    process.resourcesPath ? path.join(process.resourcesPath, 'agents', 'packages') : null,
+    path.resolve(appRootDir, 'agents', 'packages'),
+    path.join(userAgentsDir, 'packages')
+  ].filter(Boolean);
 
-  for (const name of candidateNames) {
-    const p = path.join(packagesDir, name);
-    if (fs.existsSync(p)) {
-      packagePath = p;
-      break;
+  for (const sDir of searchDirs) {
+    if (!fs.existsSync(sDir)) continue;
+    for (const name of candidateNames) {
+      const p = path.join(sDir, name);
+      if (fs.existsSync(p)) {
+        packagePath = p;
+        break;
+      }
     }
+    if (packagePath) break;
   }
 
   // If not found in packagesDir, auto-pack from agentsDir on the fly!
@@ -265,12 +564,25 @@ router.post('/install', (req, res) => {
 
     const candidateNames = [`${slug}.ruxt`, `${slug}.🔰`, `${slug}.zip`];
     let packagePath = null;
-    for (const name of candidateNames) {
-      const p = path.join(packagesDir, name);
-      if (fs.existsSync(p)) {
-        packagePath = p;
-        break;
+    const searchDirs = [
+      packagesDir,
+      path.join(bundledAgentsDir, 'packages'),
+      process.resourcesPath ? path.join(process.resourcesPath, 'app.asar.unpacked', 'agents', 'packages') : null,
+      process.resourcesPath ? path.join(process.resourcesPath, 'agents', 'packages') : null,
+      path.resolve(appRootDir, 'agents', 'packages'),
+      path.join(userAgentsDir, 'packages')
+    ].filter(Boolean);
+
+    for (const sDir of searchDirs) {
+      if (!fs.existsSync(sDir)) continue;
+      for (const name of candidateNames) {
+        const p = path.join(sDir, name);
+        if (fs.existsSync(p)) {
+          packagePath = p;
+          break;
+        }
       }
+      if (packagePath) break;
     }
 
     if (!packagePath) {
@@ -306,12 +618,8 @@ router.post('/install', (req, res) => {
       }
     }
 
-    // Ensure public avatar exists if agent has avatar
-    const localAvatar = path.join(targetDir, 'avatar.png');
-    if (fs.existsSync(localAvatar)) {
-      if (!fs.existsSync(avatarsDir)) fs.mkdirSync(avatarsDir, { recursive: true });
-      fs.copyFileSync(localAvatar, path.join(avatarsDir, `${slug}.png`));
-    }
+    // Ensure public avatar exists if agent has avatar (.png, .jpg, .svg)
+    const installedAvatar = copyLocalAvatarIfPresent(targetDir, slug) || resolveAgentAvatar(slug);
 
     // Read manifest or create default
     let manifest = {};
@@ -344,7 +652,7 @@ router.post('/install', (req, res) => {
       agentRole,
       description,
       manifest.version || '1.0.0',
-      `/agent-avatars/${slug}.png`,
+      installedAvatar || resolveAgentAvatar(slug),
       '',
       JSON.stringify(manifest)
     );
@@ -638,8 +946,23 @@ router.post('/import-package', (req, res) => {
       }
     }
 
-    // Check nested directory
-    const nestedDir = path.join(targetDir, slug);
+    // Check nested directory (handles cases where archive has top-level folder or filename has " (1)")
+    let nestedDir = path.join(targetDir, slug);
+    if (!fs.existsSync(nestedDir)) {
+      try {
+        const subdirs = fs.readdirSync(targetDir).filter(f => {
+          try { return fs.statSync(path.join(targetDir, f)).isDirectory(); } catch (_) { return false; }
+        });
+        for (const sub of subdirs) {
+          const cand = path.join(targetDir, sub);
+          if (fs.existsSync(path.join(cand, 'manifest.json')) || fs.existsSync(path.join(cand, 'agent.md'))) {
+            nestedDir = cand;
+            break;
+          }
+        }
+      } catch (_) {}
+    }
+
     if (fs.existsSync(nestedDir) && fs.statSync(nestedDir).isDirectory()) {
       const nestedItems = fs.readdirSync(nestedDir);
       for (const item of nestedItems) {
@@ -658,6 +981,22 @@ router.post('/import-package', (req, res) => {
       try {
         manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
       } catch (_) {}
+    }
+
+    // Canonical slug resolution (manifest.slug takes priority over raw filename)
+    if (manifest.slug && typeof manifest.slug === 'string') {
+      const canonicalSlug = manifest.slug.toLowerCase().replace(/[^a-z0-9_-]/g, '-').replace(/^-+|-+$/g, '');
+      if (canonicalSlug && canonicalSlug !== slug) {
+        const canonicalTarget = path.join(agentsDir, canonicalSlug);
+        if (fs.existsSync(canonicalTarget)) {
+          try { fs.rmSync(canonicalTarget, { recursive: true, force: true }); } catch (_) {}
+        }
+        try {
+          fs.renameSync(targetDir, canonicalTarget);
+          slug = canonicalSlug;
+          targetDir = canonicalTarget;
+        } catch (_) {}
+      }
     }
 
     const agentName = manifest.name || slug;
@@ -705,7 +1044,7 @@ router.post('/import-package', (req, res) => {
       agentRole,
       description,
       manifest.version || '1.0.0',
-      `/agent-avatars/${slug}.png`,
+      installedAvatar || resolveAgentAvatar(slug),
       uiEntry,
       JSON.stringify(manifest)
     );
@@ -741,7 +1080,10 @@ router.get('/agent-details/:slug', (req, res) => {
       return res.status(400).json({ error: 'Invalid agent slug identifier' });
     }
 
-    const targetDir = path.join(agentsDir, slug);
+    let targetDir = path.join(agentsDir, slug);
+    if (!fs.existsSync(targetDir) && fs.existsSync(path.join(bundledAgentsDir, slug))) {
+      targetDir = path.join(bundledAgentsDir, slug);
+    }
     if (!fs.existsSync(targetDir)) {
       return res.status(404).json({ error: `Agent ${slug} not found` });
     }
@@ -853,7 +1195,14 @@ router.post('/update-agent', (req, res) => {
       return res.status(400).json({ error: 'Valid agent slug identifier is required' });
     }
 
-    const targetDir = path.join(agentsDir, slug);
+    let targetDir = path.join(agentsDir, slug);
+    if (!fs.existsSync(targetDir) && fs.existsSync(path.join(bundledAgentsDir, slug))) {
+      try {
+        fs.cpSync(path.join(bundledAgentsDir, slug), targetDir, { recursive: true });
+      } catch (cpErr) {
+        console.warn(`Could not seed ${slug} from bundled agents:`, cpErr.message);
+      }
+    }
     if (!fs.existsSync(targetDir)) {
       return res.status(404).json({ error: `Agent ${slug} not found for updating` });
     }

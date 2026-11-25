@@ -141,13 +141,15 @@ class OmniParserV2Grounder:
         screen_height: int,
         mode: str = "hybrid",
         endpoint: str = "",
-        timeout: float = 10.0
+        timeout: float = 10.0,
+        fast_mode: bool = True
     ):
         self.screen_width = screen_width
         self.screen_height = screen_height
         self.mode = mode.lower()
         self.endpoint = endpoint.rstrip("/")
         self.timeout = timeout
+        self.fast_mode = fast_mode
         self.som_engine = SetOfMarksEngine()
         self.current_boxes: Dict[int, UIBox] = {}
 
@@ -240,18 +242,33 @@ class OmniParserV2Grounder:
             import pywinauto
             from pywinauto import Desktop
             desktop = Desktop(backend="uia")
-            windows = desktop.windows(visible_only=True)
-            for win in windows[:4]:
+
+            # Fast-path: Focus strictly on the active foreground window
+            windows_to_check = []
+            if self.fast_mode:
                 try:
-                    for child in win.descendants():
-                        if box_id >= 40:  # Cap at top 40 interactive elements to keep prompt concise
+                    import win32gui
+                    fg_hwnd = win32gui.GetForegroundWindow()
+                    if fg_hwnd:
+                        windows_to_check = [desktop.window(handle=fg_hwnd)]
+                except Exception:
+                    pass
+            if not windows_to_check:
+                windows_to_check = desktop.windows(visible_only=True)[:2]
+
+            for win in windows_to_check:
+                try:
+                    # In fast mode, inspect direct children capping at 25 items to prevent thread freezing
+                    candidates = win.children() if self.fast_mode else win.descendants()
+                    for child in candidates:
+                        if box_id >= (25 if self.fast_mode else 40):
                             break
                         ctrl_type = (child.element_info.control_type or "").strip().lower()
                         name = (child.element_info.name or "").strip()
                         auto_id = (child.element_info.automation_id or "").strip()
 
                         # Check if control is clickable/actionable
-                        if ctrl_type in ["button", "edit", "menuitem", "tabitem", "hyperlink", "checkbox", "radiobutton", "combobox"]:
+                        if ctrl_type in ["button", "edit", "menuitem", "tabitem", "hyperlink", "checkbox", "radiobutton", "combobox", "pane"]:
                             rect = child.rectangle()
                             w = rect.width()
                             h = rect.height()

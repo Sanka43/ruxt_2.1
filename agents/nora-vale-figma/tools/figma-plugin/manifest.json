@@ -1,0 +1,13 @@
+{
+  "name": "Nora Vale · RuXt Canvas Bridge",
+  "id": "ruxt-nora-vale-canvas-bridge",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "editorType": ["figma"],
+  "networkAccess": {
+    "allowedDomains": ["none"],
+    "devAllowedDomains": ["http://localhost:17451"],
+    "reasoning": "Connect the plugin to RuXt’s local, on-device canvas bridge. No design data is sent to a cloud service."
+  }
+}

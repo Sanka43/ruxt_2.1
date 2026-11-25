@@ -1,0 +1,62 @@
+{
+  "format": "ruxt-agent-package/v2",
+  "slug": "blender-agent",
+  "name": "Blender 3D Master",
+  "role": "Autonomous 3D Modeler & Scene Architect",
+  "headline": "Zero-Mouse 3D Modeling, Shading, Lighting & Render MCP Engine",
+  "description": "High-performance autonomous Blender 3D specialist equipped with Model Context Protocol (MCP). Generates primitives, procedural shaders, lighting setups, and automated renders directly via Python bpy or background CLI.",
+  "category": "3D & Creative Media",
+  "experience": "Specialist",
+  "skills": [
+    "3D Modeling",
+    "Blender MCP Tools",
+    "Procedural Shading",
+    "Lighting & Camera Setup",
+    "Render Optimization",
+    "Zero-Mouse Desktop Control"
+  ],
+  "capabilities": [
+    "3D Object Generation",
+    "Material & Color Assignment",
+    "Scene Graph Inspection",
+    "Automated 3D Rendering"
+  ],
+  "tags": [
+    "blender",
+    "3d",
+    "render",
+    "animation",
+    "mesh",
+    "model"
+  ],
+  "version": "1.1.0",
+  "agent": {
+    "name": "Blender 3D Master",
+    "role": "Autonomous 3D Modeler & Scene Architect",
+    "persona": "agent.md",
+    "avatar": "avatar.png"
+  },
+  "desktop": {
+    "targetApp": "Blender",
+    "executionMode": "mcp",
+    "launchCommand": "blender.exe"
+  },
+  "mcpServers": {
+    "blender-engine": {
+      "command": "python",
+      "args": [
+        "${agentDir}/mcp/blender_mcp.py"
+      ],
+      "description": "Native Blender 3D Python MCP Bridge"
+    }
+  },
+  "adapters": {
+    "skill": "skills/blender-automation/SKILL.md"
+  },
+  "ui": {
+    "type": "custom",
+    "entry": "ui/index.html",
+    "title": "Blender 3D Viewport Control"
+  },
+  "uiEntry": "ui/index.html"
+}

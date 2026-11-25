@@ -2,6 +2,11 @@ import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
+import { fileURLToPath } from 'url';
+import { mcpClientManager } from './mcpClientManager.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 /**
  * RuXt 2.1 Agent Client Protocol (ACP) Service
@@ -35,15 +40,42 @@ class AcpEngine {
 
   findBinary(customPath = null) {
     if (customPath && fs.existsSync(customPath)) {
-      return customPath;
+      try {
+        if (!fs.statSync(customPath).isDirectory()) return customPath;
+      } catch (_) {}
     }
 
     const userProfile = process.env.USERPROFILE || '';
     const localAppData = process.env.LOCALAPPDATA || '';
+    const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
 
-    const candidates = [];
+    const candidates = [
+      // 1. Modern official Google Antigravity CLI binary
+      path.join(localAppData, 'agy', 'bin', 'agy.exe'),
+      path.join(localAppData, 'Programs', 'antigravity', 'bin', 'agy.exe'),
+      path.join(programFiles, 'Google', 'Antigravity', 'bin', 'agy.exe'),
+      path.join(userProfile, '.gemini', 'antigravity', 'bin', 'agy.exe')
+    ];
 
-    // 1. OpenMausBot / standalone Antigravity ACP runtime
+    // 2. System PATH for agy or agy.exe
+    const pathExts = (process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').map(e => e.toLowerCase());
+    const pathDirs = (process.env.PATH || '').split(path.delimiter).filter(Boolean);
+    for (const dir of pathDirs) {
+      for (const name of ['agy', 'agy.exe', 'antigravity', 'antigravity.exe']) {
+        const direct = path.join(dir, name);
+        if (fs.existsSync(direct)) {
+          try { if (!fs.statSync(direct).isDirectory()) candidates.push(direct); } catch (_) {}
+        }
+        for (const ext of pathExts) {
+          const full = path.join(dir, name.toLowerCase().endsWith(ext) ? name : name + ext);
+          if (fs.existsSync(full)) {
+            try { if (!fs.statSync(full).isDirectory()) candidates.push(full); } catch (_) {}
+          }
+        }
+      }
+    }
+
+    // 3. OpenMausBot / standalone Antigravity ACP runtime
     const versionsDir = path.join(userProfile, '.openmausbot', 'tools', 'antigravity-acp', 'win32-x64', 'versions');
     if (fs.existsSync(versionsDir)) {
       try {
@@ -54,13 +86,13 @@ class AcpEngine {
       } catch (_) {}
     }
 
-    // 2. RuXt tools directory
+    // 4. RuXt tools directory
     const ruxtToolsDir = path.join(userProfile, '.ruxt', 'tools', 'antigravity-acp');
     if (fs.existsSync(ruxtToolsDir)) {
       candidates.push(path.join(ruxtToolsDir, 'agy_acp_server.exe'));
     }
 
-    // 3. Local AppData installations
+    // 5. Local AppData installations
     candidates.push(
       path.join(localAppData, 'Programs', 'antigravity', 'agy_acp_server.exe'),
       path.join(localAppData, 'Programs', 'Antigravity IDE', 'resources', 'app', 'extensions', 'antigravity', 'bin', 'agy_acp_server.exe')
@@ -127,6 +159,20 @@ class AcpEngine {
     };
   }
 
+  getSafeIsolatedWorkspace(requestedCwd = null) {
+    const userProfile = process.env.USERPROFILE || '';
+    const isolatedDir = path.join(userProfile, '.ruxt', 'workspace');
+    if (!fs.existsSync(isolatedDir)) {
+      try { fs.mkdirSync(isolatedDir, { recursive: true }); } catch (_) {}
+    }
+    const appRoot = path.resolve(__dirname, '../../');
+    // Strict Isolation: Never leak the Ruxt Studio application repository to the agent
+    if (!requestedCwd || requestedCwd === process.cwd() || requestedCwd.startsWith(appRoot)) {
+      return isolatedDir;
+    }
+    return requestedCwd;
+  }
+
   touchIdleTimer() {
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = setTimeout(() => {
@@ -135,7 +181,7 @@ class AcpEngine {
     }, this.idleTimeoutMs);
   }
 
-  async ensureReady({ customBinaryPath = null, cwd = null } = {}) {
+  async ensureReady({ customBinaryPath = null, cwd = null, agentSlug = null } = {}) {
     if (this.child && !this.child.killed && this.sessionId) {
       this.touchIdleTimer();
       return true;
@@ -155,8 +201,9 @@ class AcpEngine {
       console.log(`[RuXt ACP]: Starting ACP Server from ${binary}`);
       console.log(`[RuXt ACP]: Using Profile Directory: ${authDir}`);
 
-      const projectCwd = cwd || process.cwd();
-      this.currentCwd = projectCwd;
+      const safeCwd = this.getSafeIsolatedWorkspace(cwd);
+      console.log(`[RuXt ACP]: Safe Isolated Workspace CWD: ${safeCwd}`);
+      this.currentCwd = safeCwd;
 
       // Environment for ACP process
       const env = {
@@ -172,8 +219,11 @@ class AcpEngine {
       delete env.GOOGLE_API_KEY;
       delete env.GOOGLE_APPLICATION_CREDENTIALS;
 
-      this.child = spawn(binary, [], {
-        cwd: projectCwd,
+      const isAgy = path.basename(binary).toLowerCase().startsWith('agy') && !path.basename(binary).toLowerCase().includes('server');
+      const spawnArgs = isAgy ? ['acp', '--stdio', '--dangerously-skip-permissions'] : [];
+
+      this.child = spawn(binary, spawnArgs, {
+        cwd: safeCwd,
         env,
         stdio: ['pipe', 'pipe', 'pipe']
       });
@@ -216,11 +266,16 @@ class AcpEngine {
         console.warn('[RuXt ACP]: Authentication note:', authErr.message);
       }
 
-      // 3. Create Session
+      // 3. Create Session with dynamic agent MCP servers
       console.log('[RuXt ACP]: Creating session...');
+      const agentMcpServers = agentSlug ? mcpClientManager.getAcpConfigForAgent(agentSlug) : [];
+      if (agentMcpServers.length > 0) {
+        console.log(`[RuXt ACP]: Attaching ${agentMcpServers.length} declared MCP server(s) for ${agentSlug}:`, agentMcpServers.map(s => s.id).join(', '));
+      }
+
       const sessionRes = await this.sendRequest('session/new', {
-        cwd: projectCwd,
-        mcpServers: []
+        cwd: safeCwd,
+        mcpServers: agentMcpServers
       }, 30000);
 
       this.sessionId = sessionRes?.sessionId;
@@ -340,12 +395,16 @@ class AcpEngine {
 
   handleHostMethodCall(msg) {
     const { id, method, params } = msg;
+    const appRoot = path.resolve(__dirname, '../../');
 
     try {
       if (method === 'fs/read_text_file') {
         const filePath = path.resolve(this.currentCwd, params.path);
-        // Security check: restrict read to workspace root
-        if (!filePath.startsWith(this.currentCwd) && !filePath.startsWith(process.cwd())) {
+        // Protection boundary: Never allow reading Ruxt Studio application internal code
+        if (filePath.startsWith(appRoot)) {
+          return this.sendResponse(id, null, new Error('Permission denied: Access to Ruxt Studio internal source code is strictly prohibited'));
+        }
+        if (!filePath.startsWith(this.currentCwd)) {
           return this.sendResponse(id, null, new Error('Permission denied: Path outside workspace'));
         }
         if (!fs.existsSync(filePath)) {
@@ -357,8 +416,11 @@ class AcpEngine {
 
       if (method === 'fs/write_text_file') {
         const filePath = path.resolve(this.currentCwd, params.path);
-        // Security check
-        if (!filePath.startsWith(this.currentCwd) && !filePath.startsWith(process.cwd())) {
+        // Protection boundary: Never allow modifying Ruxt Studio application internal code
+        if (filePath.startsWith(appRoot)) {
+          return this.sendResponse(id, null, new Error('Permission denied: Modification of Ruxt Studio internal source code is strictly prohibited'));
+        }
+        if (!filePath.startsWith(this.currentCwd)) {
           return this.sendResponse(id, null, new Error('Permission denied: Path outside workspace'));
         }
         fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -396,9 +458,10 @@ class AcpEngine {
     model = 'flash',
     customBinaryPath = null,
     cwd = null,
+    agentSlug = null,
     onDelta = null
   }, retryCount = 0) {
-    await this.ensureReady({ customBinaryPath, cwd });
+    await this.ensureReady({ customBinaryPath, cwd, agentSlug });
     this.touchIdleTimer();
 
     // Prepare unified prompt text
@@ -502,19 +565,31 @@ class AcpEngine {
       if (fs.existsSync(tokenPath)) {
         try {
           const tokenData = JSON.parse(fs.readFileSync(tokenPath, 'utf8'));
+          const email = tokenData.email || null;
+          const hasAuth = Boolean(email || tokenData.access_token || tokenData.token || tokenData.apiKey);
           return {
-            email: tokenData.email || 'isankaerangahtc820@gmail.com',
-            version: '1.4.3',
-            authenticated: true,
+            email,
+            version: '1.5.10',
+            authenticated: hasAuth,
             method: 'oauth-personal'
           };
         } catch (_) {}
       }
     }
 
+    const binary = this.findBinary();
+    if (binary) {
+      return {
+        email: 'Google Account (Active Engine)',
+        version: '1.5.10',
+        authenticated: true,
+        method: 'oauth-personal'
+      };
+    }
+
     return {
       email: null,
-      version: '1.4.3',
+      version: '1.5.10',
       authenticated: false,
       method: null
     };

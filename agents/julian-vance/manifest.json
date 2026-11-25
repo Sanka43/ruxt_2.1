@@ -7,7 +7,15 @@
   "description": "Specialist in React, Next.js, Tailwind CSS, TypeScript, and modern component architecture with an eye for pixel-perfect design.",
   "category": "Engineering",
   "experience": "7+ Years",
-  "tags": ["React", "TypeScript", "Tailwind CSS", "Next.js", "UI/UX", "State Management", "Vite"],
+  "tags": [
+    "React",
+    "TypeScript",
+    "Tailwind CSS",
+    "Next.js",
+    "UI/UX",
+    "State Management",
+    "Vite"
+  ],
   "agent": {
     "name": "Julian Vance",
     "role": "Senior Frontend Web Developer",
@@ -17,6 +25,17 @@
   "adapters": {
     "skill": "skills/frontend-developer/SKILL.md"
   },
-  "version": "1.0.0",
-  "readme": "README.md"
+  "version": "1.1.0",
+  "readme": "README.md",
+  "slug": "julian-vance",
+  "headline": "Specialist in React, Next.js, Tailwind CSS, TypeScript, and modern component architecture with an eye for pixel-perfect design.",
+  "permissions": [
+    "filesystem:read",
+    "filesystem:write",
+    "terminal:exec",
+    "network:http"
+  ],
+  "skills": [
+    "Frontend Developer"
+  ]
 }

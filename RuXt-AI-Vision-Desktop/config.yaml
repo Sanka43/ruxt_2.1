@@ -14,6 +14,7 @@ grounding:
   omniparser_mode: "hybrid"   # "hybrid" (built-in fast SOM), "endpoint" (remote OmniParser v2 server)
   omniparser_endpoint: ""     # Optional custom OmniParser v2 server URL (e.g. http://localhost:8000)
   use_uia_tree: false         # Fallback UIA tree scan
+  fast_mode: true             # Fast-path grounding: bounds UIA scan to foreground window only
   coordinate_scale: 1000      # Grounding normalized coordinates scale (0-1000)
   screenshot_max_width: 1280  # Optimized width to maximize inference speed & reduce token usage
   screenshot_max_height: 720
@@ -25,12 +26,15 @@ execution:
   independent_cursor: false   # Single cursor mode by default (disables dual cursor complexity)
   mouse_move_duration: 0.20   # Smooth visible human-like glide
   action_delay: 0.10          # Minimal action delay between consecutive steps
-  type_via_clipboard: true    # Unicode safe typing on Windows via clipboard
+  type_via_clipboard: false   # Type letter-by-letter sequentially (no full-text paste)
+  typing_interval: 0.025      # Natural keystroke delay per character (seconds)
   failsafe: true              # PyAutoGUI failsafe (slam mouse to screen corner to abort)
 
 # Autonomous Agent Policy
 agent:
   max_steps: 25               # Maximum autonomous steps per task
   enable_reflection: true     # Reflect on previous action before executing next
+  allow_action_chaining: true # Multi-action execution per screenshot (drastically cuts step latency)
+  max_chain_length: 5         # Maximum consecutive actions in one step chain
   log_level: "INFO"
   data_dir: "data"

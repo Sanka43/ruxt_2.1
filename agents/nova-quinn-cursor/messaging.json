@@ -1,0 +1,13 @@
+{
+  "voice": "default-funny",
+  "topics": [
+    "coding",
+    "cursor",
+    "code",
+    "project",
+    "refactor",
+    "typescript"
+  ],
+  "humor": "dev-desk-jokes",
+  "length": "medium"
+}

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { spawn } from 'child_process';
+import { isMaskedSecret } from '../services/secrets.js';
 import path from 'path';
 import fs from 'fs';
 import { 
@@ -15,7 +16,8 @@ import {
 import { 
   startVisionDesktopExecution, 
   stopScreenBorder,
-  setAiCursor
+  setAiCursor,
+  resumeVisionDesktopJob
 } from '../services/visionComputerUse.js';
 import { generateAIResponse } from '../services/aiProvider.js';
 import db from '../db.js';
@@ -49,7 +51,7 @@ export function resolveFastestProvider(explicitProvider = null, explicitModel = 
 
   // 1. Explicit provider override
   if (explicitProvider) {
-    const resolvedKey = explicitApiKey || settings[`${explicitProvider}_api_key`] || '';
+    const resolvedKey = (isMaskedSecret(explicitApiKey) ? '' : explicitApiKey) || settings[`${explicitProvider}_api_key`] || '';
     return {
       provider: explicitProvider,
       model: explicitModel || settings[`${explicitProvider}_model`] || (explicitProvider === 'gemini' ? 'gemini-2.0-flash' : explicitProvider === 'openai' ? 'gpt-4o-mini' : 'flash'),
@@ -345,11 +347,13 @@ router.post('/abort/:jobId', (req, res) => {
 router.post('/abort-active', (req, res) => {
   let count = 0;
   for (const [id, job] of activeDesktopJobs.entries()) {
-    if (job.status === 'running') {
+    if (job.status !== 'completed' && job.status !== 'aborted') {
       abortLiveDesktopExecution(id);
       count++;
     }
   }
+  // Even if activeDesktopJobs map had no running job, ensure signals and cursor are cleared
+  abortLiveDesktopExecution('emergency_all');
   stopScreenBorder();
   setAiCursor(false);
   res.json({ success: true, abortedCount: count });
@@ -391,6 +395,17 @@ router.post('/launch', (req, res) => {
       return res.json({ success: true, appInfo });
     }
     res.status(404).json({ error: 'Application not found on system' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 7. Human-in-the-Loop: Resume autonomous execution after user takeover
+router.post('/resume', (req, res) => {
+  try {
+    const { jobId } = req.body || {};
+    const success = resumeVisionDesktopJob(jobId);
+    res.json({ success, message: 'Resume signal dispatched' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

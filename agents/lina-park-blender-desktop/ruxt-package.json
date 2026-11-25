@@ -1,0 +1,7 @@
+{
+  "format": "ruxt-agent-package/v1",
+  "slug": "lina-park-blender-desktop",
+  "preferredExtension": ".🔰",
+  "fallbackExtension": ".ruxt",
+  "note": "RuXt humanized agent package. Prefer .🔰 when the OS supports emoji extensions; otherwise use .ruxt."
+}

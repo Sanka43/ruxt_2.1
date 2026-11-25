@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import db from '../db.js';
 import { generateAIResponse } from './aiProvider.js';
+import { reviewDeliverable } from './supervisorEngine.js';
 
 /**
  * RuXt Autonomous Team Orchestrator Service
@@ -91,8 +92,9 @@ export function detectProjectCategory(text) {
     };
   }
 
-  // 4. General / Custom Web Application (only if explicitly requested as a web / software build)
-  if (t.match(/\b(website|web site|web app|landing page|dashboard|portal|prototype)\b/) || (t.match(/\b(build|design|create|make)\b/) && t.match(/\b(app|system|ui|page)\b/))) {
+  // 4. General / Custom Web Application (only if explicitly requested as a web / software build, and NOT a video/media task)
+  const isVideoOrMediaTask = t.match(/\b(capcut|reel|reels|tiktok|shorts?|video|clip|subtitles?|draft|mp4)\b/);
+  if (!isVideoOrMediaTask && (t.match(/\b(website|web site|web app|landing page|dashboard|portal|prototype)\b/) || (t.match(/\b(build|design|create|make)\b/) && t.match(/\b(app|system|ui|page)\b/)))) {
     const cleanSnippet = (text || '')
       .replace(/^(bro|can you|please|design|build|create|make|web|site|website|system|ekak|hadanna|hoda|ona|oni)\s*/gi, '')
       .trim();
@@ -186,18 +188,53 @@ export function matchBestSpecialist(text) {
       }
     }
 
+    // 7. Video Editing, TikTok Reels, CapCut Drafts & Shorts -> CineCut Studio (capcut-agent)
+    if (slug === 'capcut-agent' || slug.includes('capcut') || role.includes('video') || role.includes('content creator') || desc.includes('capcut')) {
+      if (query.match(/capcut|video|reel|reels|tiktok|shorts?|clip|subtitles?|draft|timeline|aspect\s*ratio|9:16|16:9/)) {
+        score += 50;
+      }
+    }
+
+    // 8. Universal Dynamic Manifest Matching (For any custom imported .ruxt agent from ruxt_2.1_web)
+    try {
+      let m = typeof agent.manifest === 'string' ? JSON.parse(agent.manifest) : (agent.manifest || {});
+      const skills = Array.isArray(m.skills) ? m.skills : [];
+      const tags = Array.isArray(m.tags) ? m.tags : [];
+      const capabilities = Array.isArray(m.capabilities) ? m.capabilities : [];
+
+      for (const skill of skills) {
+        const sLower = String(skill).toLowerCase().trim();
+        if (sLower.length > 2 && query.includes(sLower)) {
+          score += 25;
+        }
+      }
+      for (const tag of tags) {
+        const tLower = String(tag).toLowerCase().trim();
+        if (tLower.length > 2 && query.includes(tLower)) {
+          score += 20;
+        }
+      }
+      for (const cap of capabilities) {
+        const cLower = String(cap).toLowerCase().trim();
+        if (cLower.length > 2 && query.includes(cLower)) {
+          score += 20;
+        }
+      }
+    } catch (_) {}
+
     if (score > highestScore) {
       highestScore = score;
       bestAgent = agent;
     }
   }
 
-  // Default to Julian Vance if web-related or fallback to first specialist
+  // Default to first installed specialist, or RuXt leader if none installed
   if (!bestAgent || highestScore <= 0) {
-    bestAgent = agents.find(a => a.slug === 'julian-vance') || agents[0] || {
-      slug: 'julian-vance',
-      name: 'Julian Vance',
-      role: 'Senior Frontend Web Developer'
+    const firstInstalled = agents.find(a => a.slug !== 'ruxt' && a.slug !== 'packages') || agents[0];
+    bestAgent = firstInstalled || {
+      slug: 'ruxt',
+      name: 'RuXt',
+      role: 'Team Leader & Engine Orchestrator'
     };
   }
 
@@ -408,12 +445,12 @@ export function assembleSpecialistSquad(text) {
     }
   }
 
-  // Baseline team guarantees: Julian (UI) + Damon (Backend)
+  // If no specialist agents matched, pick installed specialists from agents, or let RuXt handle it
   if (squad.length === 0) {
-    addSpecialist('julian-vance', null);
-  }
-  if (squad.length < 2) {
-    addSpecialist('damon-cole', null);
+    const installedSpecialists = agents.filter(a => a.slug !== 'ruxt' && a.slug !== 'packages');
+    if (installedSpecialists.length > 0) {
+      squad.push(installedSpecialists[0]);
+    }
   }
 
   return squad;
@@ -503,26 +540,40 @@ export async function handleOrchestratedConversation({
       `- Code Standard: Semantic HTML5, responsive Tailwind CSS utility classes, and interactive vanilla JavaScript.\n\n` +
       `Please engineer the complete component architecture and provide the full production code mockup.`;
 
-    // 2. Generate Julian's Specialist Work
-    const specialistMockupCode = category.type === 'car-rental'
-      ? generateCarRentalMockupCode()
-      : (category.type === 'tourism' ? generateTourismMockupCode() : generateCarRentalMockupCode());
+    // 2. Generate Specialist Work dynamically via LLM
+    let specialistMockupCode = '';
+    let specialistResponseToLeader = '';
+    try {
+      const specialistAiRes = await generateAIResponse({
+        provider: settings?.active_provider || 'antigravity',
+        model: settings?.[`${settings?.active_provider || 'antigravity'}_model`] || 'flash',
+        systemPrompt: `You are ${specialist.name}, ${specialist.role} on the RuXt platform. 
+The client is requesting: "${projectBrief || userMessage}".
+Write the complete, modern, high-converting HTML5 and Tailwind CSS component mockup code tailored specifically to their vision.`,
+        userMessage: `${leaderBriefToSpecialist}\n\nDeliver your design highlights, architectural rationale, and the complete responsive HTML + Tailwind CSS mockup code in \`\`\`html code blocks.`,
+        settings,
+        agentSlug: specialist.slug,
+        agentName: specialist.name,
+        agentRole: specialist.role
+      });
 
-    const specialistResponseToLeader = category.type === 'car-rental'
-      ? `On it, RuXt! I've engineered the complete responsive Car Rental & Fleet Reservation Platform (DriveX).\n\n` +
-        `### 🎨 Design Highlights:\n` +
-        `1. **Dynamic Hero:** Obsidian dark luxury aesthetic with an instant pickup/drop-off date & vehicle type search widget.\n` +
-        `2. **Fleet Showcase:** Filterable vehicle categories (Luxury Sedans, All-Terrain SUVs, Electric Vehicles) with specs badges (Auto/Manual, Seats, Fuel/EV).\n` +
-        `3. **Transparent Pricing:** Daily rates, free cancellation tags, and zero hidden fee guarantees.\n` +
-        `4. **Interactive Reservation Modal:** Instant customer booking form with dates and driver details.\n\n` +
-        `The production-ready HTML + Tailwind CSS component code is prepared and verified. Review attached.`
-      : `On it, RuXt! I've engineered the complete responsive ${category.name} design.\n\n` +
-        `### 🎨 Design Highlights:\n` +
-        `1. **Immersive Hero:** High-contrast gradient overlay, luxury typography, and floating action widget.\n` +
-        `2. **Core Feature Showcase:** Responsive CSS grid with rating badges and hover micro-interactions.\n` +
-        `3. **Tiered Packages / Cards:** Feature checklists, daily rates, and instant booking triggers.\n` +
-        `4. **Interactive Action Modal:** Integrated reservation trigger modal and mobile responsive navigation.\n\n` +
-        `The production-ready HTML + Tailwind CSS component code is prepared and verified. Review attached.`;
+      if (specialistAiRes?.content) {
+        const fullContent = specialistAiRes.content;
+        const codeMatch = fullContent.match(/```html([\s\S]*?)```/i);
+        if (codeMatch) {
+          specialistMockupCode = codeMatch[1].trim();
+          specialistResponseToLeader = fullContent.replace(/```html[\s\S]*?```/i, '').trim();
+        } else {
+          specialistMockupCode = fullContent;
+          specialistResponseToLeader = `I have engineered the custom architectural solution for "${category.name}". Review the production code mockup attached.`;
+        }
+      }
+    } catch (_) {}
+
+    if (!specialistMockupCode) {
+      specialistMockupCode = `<!-- Custom component architecture engineered for: ${category.name} -->\n<div class="p-8 text-center text-slate-100 font-sans"><h1 class="text-2xl font-bold">${category.name}</h1><p class="text-sm text-slate-400 mt-2">${projectBrief || userMessage}</p></div>`;
+      specialistResponseToLeader = `I have engineered the custom architectural specifications for "${category.name}". Review attached.`;
+    }
 
     // 3. RuXt Evaluation & Consensus Decision
     const agreedDecision = `Approved implementation and production architecture for ${category.name}. All UI components, responsive layout, and interactive modules signed off by Chief of Staff & ${specialist.name}.`;
@@ -567,24 +618,10 @@ export async function handleOrchestratedConversation({
       `- **Final Decision:** ${agreedDecision}\n` +
       `- **Specialist Consultation:** Successfully aligned with 🎨 **${specialist.name}** (${specialist.role}).\n` +
       `- **Project Category:** ${category.title}\n\n` +
-      `මම සහ **${specialist.name}** සාකච්ඡා කර ලබාගත් තීරණය අනුව, ඔබේ **${category.name}** එකට අදාළ සම්පූර්ණ UI architecture එක සහ production mockup එක සූදානම් කළා! ${category.icon}⚡\n\n` +
-      `### 🛠️ Approved Key Components:\n` +
-      (category.type === 'car-rental'
-        ? `  - 🧭 Modern Navbar with Brand & Quick Links\n` +
-          `  - 🔍 Hero Section with Instant Car Search Widget (Location, Date, Vehicle Type)\n` +
-          `  - 🏎️ Fleet Showcase Grid (BMW 5 Series, Toyota Land Cruiser Prado, Tesla Model 3)\n` +
-          `  - ⚙️ Interactive Vehicle Specs (Transmission, Seats, Fuel/Electric, AC)\n` +
-          `  - 📋 Interactive Booking Modal with instant reservation confirmation\n` +
-          `  - 📱 100% Mobile & Desktop Responsive Layout (Tailwind CSS)\n\n`
-        : `  - 🧭 Modern Navbar with Brand & Quick Links\n` +
-          `  - 🔍 Hero Section with Floating Search Widget\n` +
-          `  - 🏝️ Curated Grid & Feature Showcases\n` +
-          `  - 📦 Tiered Packages & Booking Triggers\n` +
-          `  - 📱 100% Mobile & Desktop Responsive Layout (Tailwind CSS)\n\n`) +
-      `*(දකුණු පස ඇති **Executive Board Room** එකෙන් මම සහ Julian ඇතුළු අපේ squad එක අතර සිදුවූ සම්පූර්ණ සජීවී සාකච්ඡාව (Live Deliberation) සහ Kanban Roadmap එක නැරඹිය හැක.)*\n\n` +
+      (specialistResponseToLeader ? `### 🎨 Specialist Architectural Design Highlights:\n${specialistResponseToLeader}\n\n` : '') +
       `### 💻 Generated Production Component Code:\n` +
       `\`\`\`html\n${specialistMockupCode}\n\`\`\`\n\n` +
-      `*මෙම තීරණය ක්‍රියාත්මක කිරීමට හෝ තවත් විශේෂාංග එක් කිරීමට මට දන්වන්න!*`;
+      `*Feel free to request any adjustments or export this code directly.*`;
 
     return {
       content: finalPresentation,
@@ -1151,66 +1188,201 @@ export async function conductBoardroomMeeting({
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  // 1. Generate Authentic Board Room Dialogue
-  const deliberationDialogue = [
-    {
-      agent_slug: leader.slug,
-      agent_name: leader.name,
-      agent_role: leader.role,
-      phase: 'opening',
-      time: timeFormat(0),
-      message: `Team, convene in the Board Room. We have received an executive directive from the user:\n\n` +
-               `📌 **Strategic Objective:** "${cleanTopic}"\n\n` +
-               `Our goal today is to reach a unified architectural decision, eliminate execution blindspots, ` +
-               `and assign distinct, sequential tasks across the squad. ${frontendSpecialist.name.split(' ')[0]}, deliver your frontend & UX strategy first.`
-    },
-    {
-      agent_slug: frontendSpecialist.slug,
-      agent_name: frontendSpecialist.name,
-      agent_role: frontendSpecialist.role,
-      phase: 'proposal',
-      time: timeFormat(1),
-      message: `Thanks RuXt. Looking at "${cleanTopic}", here is my frontend UX proposal:\n\n` +
-               `1. **Aesthetic Direction:** Obsidian dark-mode with high-contrast accenting, responsive micro-cards, and glassmorphic elevated panels.\n` +
-               `2. **Core Modules:** Dynamic hero section, real-time interactive parameter cards, and fluid 60fps animations.\n` +
-               `3. **Responsive Architecture:** Semantic HTML5, mobile-first Tailwind CSS utility styling, and accessible keyboard shortcuts.\n\n` +
-               `I can implement the component library with production mockups immediately.`
-    },
-    {
-      agent_slug: backendSpecialist.slug,
-      agent_name: backendSpecialist.name,
-      agent_role: backendSpecialist.role,
-      phase: 'critique',
-      time: timeFormat(2),
-      message: `Julian's UI architecture looks sharp. To back it up with resilient infrastructure for "${cleanTopic}":\n\n` +
-               `⚡ **High-Throughput APIs:** Clean REST/gRPC endpoints with input validation schemas and strict error boundaries.\n` +
-               `🗄️ **Optimized Data Layer:** PostgreSQL with normalized relational models, optimized indexing, and Redis caching.\n` +
-               `🐳 **Containerized Reliability:** Multi-stage Docker container with automated health probes and event-driven logging.\n\n` +
-               `I will engineer the backend services and verify database migrations.`
-    },
-    {
-      agent_slug: thirdSpecialist.slug,
-      agent_name: thirdSpecialist.name,
-      agent_role: thirdSpecialist.role,
-      phase: thirdPhaseName,
-      time: timeFormat(3),
-      message: thirdPhaseMessage
-    },
-    {
-      agent_slug: leader.slug,
-      agent_name: leader.name,
-      agent_role: leader.role,
-      phase: 'decision',
-      time: timeFormat(4),
-      message: `Excellent synthesis, squad. We have full alignment across Frontend UX, Backend Infrastructure, and ${thirdSpecialist.role}.\n\n` +
-               `🎯 **EXECUTIVE CONSENSUS DECISION:**\n` +
-               `We proceed with Julian's high-impact responsive UI, Damon's resilient backend & API architecture, ` +
-               `and ${thirdSpecialist.name.split(' ')[0]}'s domain guidance. I am generating the per-member task pipeline right now. ` +
-               `All tasks will move sequentially through the Kanban board until full delivery.`
-    }
-  ];
+  // 1. Dynamic Board Room Deliberation Synthesis (AI-Powered with contextual fallback)
+  let deliberationDialogue = null;
+  let consensusDecision = null;
+  let dynamicPlannedTasks = null;
 
-  const consensusDecision = `Consensus Reached: Deploy a production-grade ${category.name} featuring responsive UI, scalable backend services, and domain verification. Deliverables mapped to sequential Kanban pipeline.`;
+  try {
+    const provider = settings?.active_provider || 'antigravity';
+    const model = settings?.[`${provider}_model`] || (provider === 'antigravity' ? 'flash' : 'gemini-2.0-flash');
+
+    const prompt = `You are orchestrating an executive boardroom deliberation among specialist AI agents:
+Leader: ${leader.name} (${leader.role})
+Frontend Specialist: ${frontendSpecialist.name} (${frontendSpecialist.role})
+Backend Specialist: ${backendSpecialist.name} (${backendSpecialist.role})
+Domain Specialist: ${thirdSpecialist.name} (${thirdSpecialist.role})
+
+Strategic Topic: "${cleanTopic}"
+
+Generate an authentic, professional multi-agent deliberation for this specific topic with 5 distinct phases:
+1. Leader opening statement framing the project requirements (phase: "opening")
+2. Frontend specialist proposal addressing UI/UX, styling and user workflows specifically for "${cleanTopic}" (phase: "proposal")
+3. Backend specialist architecture addressing APIs, database, and infrastructure (phase: "critique")
+4. Domain specialist strategy addressing their specific role (${thirdSpecialist.role}) for "${cleanTopic}" (phase: "${thirdPhaseName}")
+5. Leader executive consensus decision wrapping up the agreement (phase: "decision")
+
+Also produce 3 to 4 concrete, actionable sequential tasks for the Kanban roadmap.
+
+Respond ONLY with a valid JSON object matching this schema (no markdown fences, just pure JSON):
+{
+  "consensusDecision": "Consensus Reached: ...",
+  "dialogue": [
+    {
+      "agent_slug": "${leader.slug}",
+      "agent_name": "${leader.name}",
+      "agent_role": "${leader.role}",
+      "phase": "opening",
+      "message": "..."
+    },
+    {
+      "agent_slug": "${frontendSpecialist.slug}",
+      "agent_name": "${frontendSpecialist.name}",
+      "agent_role": "${frontendSpecialist.role}",
+      "phase": "proposal",
+      "message": "..."
+    },
+    {
+      "agent_slug": "${backendSpecialist.slug}",
+      "agent_name": "${backendSpecialist.name}",
+      "agent_role": "${backendSpecialist.role}",
+      "phase": "critique",
+      "message": "..."
+    },
+    {
+      "agent_slug": "${thirdSpecialist.slug}",
+      "agent_name": "${thirdSpecialist.name}",
+      "agent_role": "${thirdSpecialist.role}",
+      "phase": "${thirdPhaseName}",
+      "message": "..."
+    },
+    {
+      "agent_slug": "${leader.slug}",
+      "agent_name": "${leader.name}",
+      "agent_role": "${leader.role}",
+      "phase": "decision",
+      "message": "..."
+    }
+  ],
+  "tasks": [
+    {
+      "title": "[Frontend] ...",
+      "description": "...",
+      "agent_id": "${frontendSpecialist.slug}",
+      "priority": "high",
+      "order_index": 0,
+      "status": "backlog"
+    },
+    {
+      "title": "[Backend & Systems] ...",
+      "description": "...",
+      "agent_id": "${backendSpecialist.slug}",
+      "priority": "high",
+      "order_index": 1,
+      "status": "backlog"
+    },
+    {
+      "title": "[${thirdSpecialist.name}] ...",
+      "description": "...",
+      "agent_id": "${thirdSpecialist.slug}",
+      "priority": "medium",
+      "order_index": 2,
+      "status": "backlog"
+    },
+    {
+      "title": "[Leader QA] Final Integration Synthesis & Delivery Sign-Off",
+      "description": "Cross-agent integration review, verification audit, and client sign-off.",
+      "agent_id": "${leader.slug}",
+      "priority": "urgent",
+      "order_index": 3,
+      "status": "backlog"
+    }
+  ]
+}`;
+
+    const aiRes = await generateAIResponse({
+      provider,
+      model,
+      systemPrompt: 'You are the RuXt Executive Boardroom Synthesizer. You generate JSON-formatted multi-agent deliberations.',
+      userMessage: prompt,
+      settings
+    });
+
+    if (aiRes?.content) {
+      const cleanJson = aiRes.content.replace(/```json\s*|```/g, '').trim();
+      const parsed = JSON.parse(cleanJson);
+      if (parsed.dialogue && parsed.dialogue.length >= 3) {
+        deliberationDialogue = parsed.dialogue.map((m, idx) => ({
+          ...m,
+          time: timeFormat(idx)
+        }));
+        consensusDecision = parsed.consensusDecision || parsed.decision;
+        if (parsed.tasks && parsed.tasks.length >= 2) {
+          dynamicPlannedTasks = parsed.tasks.map((t, idx) => ({
+            ...t,
+            order_index: idx,
+            status: t.status || 'backlog',
+            priority: t.priority || 'high',
+            deliverable_output: null
+          }));
+        }
+      }
+    }
+  } catch (_) {}
+
+  if (!deliberationDialogue) {
+    deliberationDialogue = [
+      {
+        agent_slug: leader.slug,
+        agent_name: leader.name,
+        agent_role: leader.role,
+        phase: 'opening',
+        time: timeFormat(0),
+        message: `Team, convene in the Board Room. We have received an executive directive from the user:\n\n` +
+                 `📌 **Strategic Objective:** "${cleanTopic}"\n\n` +
+                 `Our goal today is to reach a unified architectural decision, eliminate execution blindspots, ` +
+                 `and assign distinct, sequential tasks across the squad. ${frontendSpecialist.name.split(' ')[0]}, deliver your frontend & UX strategy first.`
+      },
+      {
+        agent_slug: frontendSpecialist.slug,
+        agent_name: frontendSpecialist.name,
+        agent_role: frontendSpecialist.role,
+        phase: 'proposal',
+        time: timeFormat(1),
+        message: `Thanks RuXt. Looking at "${cleanTopic}", here is my frontend UX proposal:\n\n` +
+                 `1. **Aesthetic Direction:** Obsidian dark-mode with high-contrast accenting, responsive micro-cards, and glassmorphic elevated panels.\n` +
+                 `2. **Core Modules:** Dynamic hero section, real-time interactive parameter cards, and fluid 60fps animations.\n` +
+                 `3. **Responsive Architecture:** Semantic HTML5, mobile-first Tailwind CSS utility styling, and accessible keyboard shortcuts.\n\n` +
+                 `I can implement the component library with production mockups immediately.`
+      },
+      {
+        agent_slug: backendSpecialist.slug,
+        agent_name: backendSpecialist.name,
+        agent_role: backendSpecialist.role,
+        phase: 'critique',
+        time: timeFormat(2),
+        message: `Julian's UI architecture looks sharp. To back it up with resilient infrastructure for "${cleanTopic}":\n\n` +
+                 `⚡ **High-Throughput APIs:** Clean REST/gRPC endpoints with input validation schemas and strict error boundaries.\n` +
+                 `🗄️ **Optimized Data Layer:** PostgreSQL with normalized relational models, optimized indexing, and Redis caching.\n` +
+                 `🐳 **Containerized Reliability:** Multi-stage Docker container with automated health probes and event-driven logging.\n\n` +
+                 `I will engineer the backend services and verify database migrations.`
+      },
+      {
+        agent_slug: thirdSpecialist.slug,
+        agent_name: thirdSpecialist.name,
+        agent_role: thirdSpecialist.role,
+        phase: thirdPhaseName,
+        time: timeFormat(3),
+        message: thirdPhaseMessage
+      },
+      {
+        agent_slug: leader.slug,
+        agent_name: leader.name,
+        agent_role: leader.role,
+        phase: 'decision',
+        time: timeFormat(4),
+        message: `Excellent synthesis, squad. We have full alignment across Frontend UX, Backend Infrastructure, and ${thirdSpecialist.role}.\n\n` +
+                 `🎯 **EXECUTIVE CONSENSUS DECISION:**\n` +
+                 `We proceed with Julian's high-impact responsive UI, Damon's resilient backend & API architecture, ` +
+                 `and ${thirdSpecialist.name.split(' ')[0]}'s domain guidance. I am generating the per-member task pipeline right now. ` +
+                 `All tasks will move sequentially through the Kanban board until full delivery.`
+      }
+    ];
+  }
+
+  if (!consensusDecision) {
+    consensusDecision = `Consensus Reached: Deploy a production-grade ${category.name} featuring responsive UI, scalable backend services, and domain verification. Deliverables mapped to sequential Kanban pipeline.`;
+  }
 
   // 2. Persist Boardroom Session in SQLite
   const boardroomId = randomUUID();
@@ -1237,7 +1409,7 @@ export async function conductBoardroomMeeting({
   }
 
   // 4. Generate Structured Per-Member Tasks in Kanban
-  const plannedTasks = [
+  const plannedTasks = dynamicPlannedTasks || [
     {
       title: `[Frontend] Build Responsive UI Architecture for ${category.name}`,
       description: `Implement responsive Tailwind CSS layout, dynamic interactive hero section, and spec cards matching client vision: "${cleanTopic}".`,
@@ -1320,7 +1492,8 @@ export async function conductBoardroomMeeting({
     },
     messages: createdMessages,
     tasks: createdTasks,
-    decision: consensusDecision
+    decision: consensusDecision,
+    squad: [leader, frontendSpecialist, backendSpecialist, thirdSpecialist]
   };
 }
 
@@ -1431,6 +1604,27 @@ export async function executeTaskStep({ taskId, settings = {} }) {
       `- **Sign-off:** All acceptance criteria satisfied. Project approved for deployment.\n` +
       `- **Deliverable Archive:** Production-ready deliverable bundle verified.` +
       handoffContext;
+  }
+
+  // Autonomous Quality Supervision Loop (Donald Trump Supervisor)
+  try {
+    const hasSupervisor = db.prepare("SELECT slug FROM agents WHERE slug = 'donald-trump-supervisor'").get();
+    if (hasSupervisor && agentSlug !== 'donald-trump-supervisor') {
+      const reviewResult = await reviewDeliverable({
+        prompt: task.title + '\n' + (task.description || ''),
+        deliverable,
+        supervisorSlug: 'donald-trump-supervisor',
+        workerSlug: agentSlug,
+        settings
+      });
+
+      if (reviewResult && reviewResult.critique) {
+        deliverable += `\n\n> 🦅 **Executive Quality Review [by Donald Trump Supervisor - Score: ${reviewResult.score}/100 | ${reviewResult.verdict}]:**\n` +
+          `> "${reviewResult.critique.replace(/\n+/g, ' ')}"`;
+      }
+    }
+  } catch (supErr) {
+    console.warn('[orchestrator] Supervisor review notice:', supErr.message);
   }
 
   // Move task to done with deliverable

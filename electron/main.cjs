@@ -17,6 +17,7 @@ try {
 
 let mainWindow = null;
 let overlayWindow = null;
+let lastBannerData = null;
 let serverProcess = null;
 const isDev = process.env.NODE_ENV === 'development';
 
@@ -50,7 +51,39 @@ function createOrGetOverlayWindow() {
 
   overlayWindow.setAlwaysOnTop(true, 'screen-saver');
   overlayWindow.setIgnoreMouseEvents(true, { forward: true });
-  overlayWindow.loadFile(path.join(__dirname, '../public/overlay.html'));
+  try {
+    // Windows WDA_EXCLUDEFROMCAPTURE: Keeps overlay 100% visible to user eyes,
+    // but automatically excludes it from MSS / BitBlt screen capture so AI vision model
+    // analyzes pure desktop pixels with zero border/island obstruction!
+    overlayWindow.setContentProtection(true);
+  } catch (_) {}
+
+  const candidatePaths = [
+    path.join(__dirname, '../public/overlay.html'),
+    path.join(__dirname, '../dist/overlay.html'),
+    path.join(process.resourcesPath || '', 'app.asar/public/overlay.html'),
+    path.join(process.resourcesPath || '', 'app.asar/dist/overlay.html'),
+    path.join(process.resourcesPath || '', 'public/overlay.html'),
+    path.join(process.resourcesPath || '', 'dist/overlay.html')
+  ];
+
+  let loaded = false;
+  for (const cp of candidatePaths) {
+    if (fs.existsSync(cp)) {
+      overlayWindow.loadFile(cp);
+      loaded = true;
+      break;
+    }
+  }
+  if (!loaded) {
+    overlayWindow.loadURL('http://127.0.0.1:1234/overlay.html');
+  }
+
+  overlayWindow.webContents.on('did-finish-load', () => {
+    if (lastBannerData && overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.webContents.send('banner-update-data', lastBannerData);
+    }
+  });
 
   overlayWindow.on('closed', () => {
     overlayWindow = null;
@@ -78,8 +111,27 @@ function startBackendServer() {
       console.log('[RuXt Desktop] Backend server already running on http://localhost:1234');
       return;
     }
-    const serverScript = path.join(__dirname, '../server/index.js');
+    let serverScript = path.join(__dirname, '../server/index.js');
+    if (!isDev) {
+      const unpackedServer = path.join(process.resourcesPath || '', 'app.asar.unpacked', 'server', 'index.js');
+      if (fs.existsSync(unpackedServer)) {
+        serverScript = unpackedServer;
+      }
+    }
     const userDataDir = isDev ? path.join(__dirname, '../data') : path.join(app.getPath('userData'), 'data');
+
+    // Resolve bundled agents and packages path safely in dev and production
+    let bundledAgentsDir = path.join(__dirname, '../agents');
+    if (!isDev) {
+      const unpackedAgents = path.join(process.resourcesPath || '', 'app.asar.unpacked', 'agents');
+      const directAgents = path.join(process.resourcesPath || '', 'agents');
+      if (fs.existsSync(unpackedAgents)) {
+        bundledAgentsDir = unpackedAgents;
+      } else if (fs.existsSync(directAgents)) {
+        bundledAgentsDir = directAgents;
+      }
+    }
+    const bundledPackagesDir = path.join(bundledAgentsDir, 'packages');
 
     let stdioConfig = 'inherit';
     let logStream = null;
@@ -96,6 +148,8 @@ function startBackendServer() {
         ...process.env, 
         PORT: '1234',
         RUXT_DATA_DIR: userDataDir,
+        RUXT_AGENTS_DIR: bundledAgentsDir,
+        RUXT_PACKAGES_DIR: bundledPackagesDir,
         ELECTRON_RUN_AS_NODE: '1'
       },
       stdio: stdioConfig
@@ -153,14 +207,22 @@ function createWindow() {
   // Desktop Overlay HUD Handlers
   ipcMain.on('desktop-overlay-show', (_event, data) => {
     try {
+      lastBannerData = data;
       if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isMinimized()) {
         mainWindow.minimize();
       }
       const win = createOrGetOverlayWindow();
       if (win) {
+        win.setAlwaysOnTop(true, 'screen-saver');
         win.setIgnoreMouseEvents(true, { forward: true });
-        win.show();
-        win.webContents.send('banner-update-data', data);
+        win.showInactive();
+        if (win.webContents.isLoading()) {
+          win.webContents.once('did-finish-load', () => {
+            win.webContents.send('banner-update-data', data);
+          });
+        } else {
+          win.webContents.send('banner-update-data', data);
+        }
       }
       try {
         globalShortcut.unregister('Escape');
@@ -206,13 +268,59 @@ function createWindow() {
     }
   });
 
+  ipcMain.on('desktop-overlay-resume', () => {
+    try {
+      const req = http.request({
+        hostname: '127.0.0.1',
+        port: 1234,
+        path: '/api/desktop/resume',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      }, (res) => {
+        if (overlayWindow && !overlayWindow.isDestroyed()) {
+          overlayWindow.webContents.send('banner-update-data', {
+            type: 'resumed',
+            stepText: 'Resuming autonomous desktop execution...',
+            actionIcon: '⚡'
+          });
+        }
+      });
+      req.on('error', (err) => {
+        console.warn('Failed to dispatch resume to backend:', err.message);
+      });
+      req.write(JSON.stringify({}));
+      req.end();
+    } catch (err) {
+      console.error('Failed to dispatch resume:', err);
+    }
+  });
+
   ipcMain.on('desktop-overlay-abort', () => {
     try {
       try { globalShortcut.unregister('Escape'); } catch (_) {}
+      
+      // Send emergency abort to backend Express server immediately
+      try {
+        const abortReq = http.request({
+          hostname: '127.0.0.1',
+          port: 1234,
+          path: '/api/desktop/abort-active',
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        abortReq.on('error', (err) => {
+          console.warn('Failed to dispatch abort-active to backend:', err.message);
+        });
+        abortReq.write(JSON.stringify({}));
+        abortReq.end();
+      } catch (reqErr) {
+        console.warn('Error initiating abort-active HTTP request:', reqErr.message);
+      }
+
       mainWindow?.webContents.send('desktop-task-aborted');
       if (overlayWindow && !overlayWindow.isDestroyed()) {
         overlayWindow.webContents.send('banner-update-data', {
-          stepText: 'Operation aborted by user',
+          stepText: 'Operation stopped by user',
           progress: 100,
           actionIcon: '⏹️'
         });
@@ -222,7 +330,7 @@ function createWindow() {
             mainWindow.restore();
             mainWindow.focus();
           }
-        }, 800);
+        }, 250);
       }
     } catch (err) {
       console.error('Failed to abort desktop task:', err);
@@ -238,19 +346,54 @@ function createWindow() {
   const targetURL = isDev ? 'http://localhost:5173' : 'http://127.0.0.1:1234';
 
   let hasLoaded = false;
-  const loadWithRetry = (retries = 40, delay = 500) => {
+  const loadWithRetry = (retries = 80, delay = 150) => {
     if (!mainWindow || mainWindow.isDestroyed() || hasLoaded) return;
-    mainWindow.loadURL(targetURL)
-      .then(() => {
-        hasLoaded = true;
-      })
-      .catch((err) => {
-        if (retries > 0 && !hasLoaded) {
-          setTimeout(() => loadWithRetry(retries - 1, delay), delay);
-        } else if (!hasLoaded) {
-          console.error('Failed to load application URL after retries:', err);
+    
+    // In production, wait until backend server actually answers on port 1234
+    if (!isDev) {
+      checkServerReady((ready) => {
+        if (!mainWindow || mainWindow.isDestroyed() || hasLoaded) return;
+        if (ready) {
+          mainWindow.loadURL(targetURL)
+            .then(() => {
+              hasLoaded = true;
+            })
+            .catch((err) => {
+              if (retries > 0 && !hasLoaded) {
+                setTimeout(() => loadWithRetry(retries - 1, delay), delay);
+              }
+            });
+        } else {
+          if (retries > 0 && !hasLoaded) {
+            setTimeout(() => loadWithRetry(retries - 1, delay), delay);
+          } else if (!hasLoaded) {
+            // Fallback: try loading index.html directly from disk
+            const candidatePaths = [
+              path.join(process.resourcesPath || '', 'app.asar.unpacked/dist/index.html'),
+              path.join(process.resourcesPath || '', 'dist/index.html'),
+              path.join(__dirname, '../dist/index.html')
+            ];
+            for (const cp of candidatePaths) {
+              if (fs.existsSync(cp)) {
+                mainWindow.loadFile(cp);
+                hasLoaded = true;
+                break;
+              }
+            }
+          }
         }
       });
+    } else {
+      mainWindow.loadURL(targetURL)
+        .then(() => {
+          hasLoaded = true;
+        })
+        .catch((err) => {
+          if (retries > 0 && !hasLoaded) {
+            setTimeout(() => loadWithRetry(retries - 1, delay), delay);
+          }
+        });
+    }
   };
 
   loadWithRetry();
@@ -258,6 +401,14 @@ function createWindow() {
   if (isDev) {
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   }
+
+  // Allow F12 or Ctrl+Shift+I to toggle DevTools for diagnosis
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.key === 'F12' || (input.control && input.shift && input.key.toLowerCase() === 'i')) {
+      mainWindow.webContents.toggleDevTools();
+      event.preventDefault();
+    }
+  });
 
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
     if (errorCode === -3) return; // Skip ERR_ABORTED when navigation is superseded
@@ -363,8 +514,9 @@ function setupAutoUpdater() {
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
   startBackendServer();
-  // Brief delay to allow backend to bind port
-  setTimeout(createWindow, 800);
+  // Create window immediately with instant retry polling for zero UI startup delay
+  createWindow();
+  setTimeout(createOrGetOverlayWindow, 800);
   setupAutoUpdater();
 
   // Auto-check in background on launch (packaged only)

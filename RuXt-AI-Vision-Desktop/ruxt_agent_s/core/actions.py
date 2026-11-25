@@ -408,7 +408,8 @@ class DesktopActionExecutor:
             try:
                 os.startfile(app_name)
             except Exception:
-                subprocess.Popen(f'start "" "{app_name}"', shell=True)
+                # No shell: app_name comes from LLM output and must never reach cmd.exe
+                subprocess.Popen([app_name])
         else:
             subprocess.Popen([app_name])
         time.sleep(2.0)

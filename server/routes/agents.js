@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import db from '../db.js';
+import { loadSettingRows } from '../services/secretStore.js';
 import { generateAIResponse } from '../services/aiProvider.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -483,7 +484,7 @@ router.post('/analyze-mission', async (req, res) => {
 
     // Attempt AI-assisted analysis if provider is available
     try {
-      const settingsRows = db.prepare('SELECT key, value FROM settings').all();
+      const settingsRows = loadSettingRows();
       const settings = {};
       for (const r of settingsRows) {
         settings[r.key] = r.value;

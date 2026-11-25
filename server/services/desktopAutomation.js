@@ -1,4 +1,4 @@
-import { execSync, spawn } from 'child_process';
+import { execSync, execFileSync, spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -181,12 +181,15 @@ export function findInstalledApplication(appName) {
   }
 
   // Generic fallback: check PATH
-  try {
-    const whereOut = execSync(`where.exe ${norm}`, { stdio: 'pipe', timeout: 1500 }).toString().trim().split(/\r?\n/)[0];
-    if (whereOut && fs.existsSync(whereOut)) {
-      return { found: true, name: appName, slug: norm, exePath: whereOut };
-    }
-  } catch (_) {}
+  // (name is user/LLM supplied: validate it and never put it in a shell string)
+  if (/^[a-z0-9._-]{1,40}$/.test(norm)) {
+    try {
+      const whereOut = execFileSync('where.exe', [norm], { stdio: 'pipe', timeout: 1500 }).toString().trim().split(/\r?\n/)[0];
+      if (whereOut && fs.existsSync(whereOut)) {
+        return { found: true, name: appName, slug: norm, exePath: whereOut };
+      }
+    } catch (_) {}
+  }
 
   return { found: false, name: appName, slug: norm, fallbackMode: 'simulation' };
 }

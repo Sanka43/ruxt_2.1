@@ -1,5 +1,6 @@
-const { app, BrowserWindow, ipcMain, shell, Menu, screen, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Menu, screen, globalShortcut, session, safeStorage } = require('electron');
 const path = require('path');
+const crypto = require('crypto');
 const { spawn } = require('child_process');
 const http = require('http');
 const fs = require('fs');
@@ -20,6 +21,61 @@ let overlayWindow = null;
 let lastBannerData = null;
 let serverProcess = null;
 const isDev = process.env.NODE_ENV === 'development';
+
+// Master key used by the backend to encrypt stored API keys. It is protected by the
+// OS (DPAPI/Keychain via safeStorage), so the SQLite file alone is not enough to read keys.
+function getOrCreateMasterKey() {
+  try {
+    if (!safeStorage.isEncryptionAvailable()) return null;
+    const keyFile = path.join(app.getPath('userData'), 'master.key');
+    if (fs.existsSync(keyFile)) {
+      return safeStorage.decryptString(fs.readFileSync(keyFile));
+    }
+    const key = crypto.randomBytes(32).toString('base64');
+    fs.mkdirSync(path.dirname(keyFile), { recursive: true });
+    fs.writeFileSync(keyFile, safeStorage.encryptString(key));
+    return key;
+  } catch (e) {
+    console.warn('[RuXt Desktop] Secret encryption unavailable:', e.message);
+    return null;
+  }
+}
+
+function isSafeExternalUrl(url) {
+  try {
+    const u = new URL(url);
+    return u.protocol === 'https:' || u.protocol === 'http:';
+  } catch (_) {
+    return false;
+  }
+}
+
+// Strict CSP for the main app document only (agent UIs and the overlay use inline scripts).
+function installContentSecurityPolicy() {
+  const csp = [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https:",
+    "font-src 'self' data:",
+    "connect-src 'self'",
+    "frame-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'"
+  ].join('; ');
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    let apply = false;
+    if (!isDev && details.resourceType === 'mainFrame') {
+      try {
+        const u = new URL(details.url);
+        apply = u.origin === 'http://127.0.0.1:1234' &&
+          !/^\/(agents|hub|overlay\.html)/.test(u.pathname) && !u.pathname.startsWith('/api');
+      } catch (_) {}
+    }
+    if (!apply) return callback({ responseHeaders: details.responseHeaders });
+    callback({ responseHeaders: { ...details.responseHeaders, 'Content-Security-Policy': [csp] } });
+  });
+}
 
 function createOrGetOverlayWindow() {
   if (overlayWindow && !overlayWindow.isDestroyed()) {
@@ -45,7 +101,8 @@ function createOrGetOverlayWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
-      contextIsolation: true
+      contextIsolation: true,
+      sandbox: true
     }
   });
 
@@ -143,9 +200,11 @@ function startBackendServer() {
       stdioConfig = ['ignore', 'pipe', 'pipe'];
     } catch (_) {}
 
+    const masterKey = isDev ? null : getOrCreateMasterKey();
     serverProcess = spawn(process.execPath, [serverScript], {
-      env: { 
-        ...process.env, 
+      env: {
+        ...process.env,
+        ...(masterKey ? { RUXT_MASTER_KEY: masterKey } : {}),
         PORT: '1234',
         RUXT_DATA_DIR: userDataDir,
         RUXT_AGENTS_DIR: bundledAgentsDir,
@@ -190,7 +249,10 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
-      contextIsolation: true
+      contextIsolation: true,
+      sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false
     }
   });
 
@@ -339,8 +401,21 @@ function createWindow() {
 
   // External links opened in user's browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    if (isSafeExternalUrl(url)) shell.openExternal(url);
     return { action: 'deny' };
+  });
+
+  // The app never navigates away from its own origin; send everything else to the browser.
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    let sameOrigin = false;
+    try {
+      const o = new URL(url).origin;
+      sameOrigin = o === 'http://127.0.0.1:1234' || (isDev && o === 'http://localhost:5173');
+    } catch (_) {}
+    if (!sameOrigin && !url.startsWith('file:')) {
+      event.preventDefault();
+      if (isSafeExternalUrl(url)) shell.openExternal(url);
+    }
   });
 
   const targetURL = isDev ? 'http://localhost:5173' : 'http://127.0.0.1:1234';
@@ -404,6 +479,7 @@ function createWindow() {
 
   // Allow F12 or Ctrl+Shift+I to toggle DevTools for diagnosis
   mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (!isDev) return; // DevTools shortcuts are development-only
     if (input.key === 'F12' || (input.control && input.shift && input.key.toLowerCase() === 'i')) {
       mainWindow.webContents.toggleDevTools();
       event.preventDefault();
@@ -513,6 +589,11 @@ function setupAutoUpdater() {
 
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
+  // Must exist before any window loads: preload.cjs calls it synchronously
+  ipcMain.on('app-get-version-sync', (event) => {
+    event.returnValue = app.getVersion();
+  });
+  installContentSecurityPolicy();
   startBackendServer();
   // Create window immediately with instant retry polling for zero UI startup delay
   createWindow();

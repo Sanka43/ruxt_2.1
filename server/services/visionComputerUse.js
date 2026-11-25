@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
 import { spawn } from 'child_process';
+import { providerKeyEnv } from './secretStore.js';
 import { activeDesktopJobs } from './desktopAutomation.js';
 import { understandTask } from './taskUnderstandingEngine.js';
 import { TaskVerificationEngine } from './taskVerificationEngine.js';
@@ -412,16 +413,13 @@ export async function startVisionDesktopExecution({
           if (settings.provider && settings.provider !== 'antigravity') {
             spawnArgs.push('--provider', settings.provider);
           }
-          if (settings.apiKey) {
-            spawnArgs.push('--api-key', settings.apiKey);
-          }
           if (settings.cursorMode) {
             spawnArgs.push('--cursor-mode', settings.cursorMode);
           }
 
           const child = spawn(pythonBin, spawnArgs, {
             cwd: path.dirname(scriptPath),
-            env: { ...process.env, PYTHONUNBUFFERED: '1' }
+            env: { ...process.env, ...providerKeyEnv(settings.apiKey), PYTHONUNBUFFERED: '1' }
           });
 
           jobState.childProcess = child;

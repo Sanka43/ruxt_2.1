@@ -59,7 +59,7 @@ def _load_ruxt_sqlite_settings(root_dir: Path) -> Dict[str, str]:
                 cursor = conn.cursor()
                 cursor.execute("SELECT key, value FROM settings")
                 for key, val in cursor.fetchall():
-                    if key and val:
+                    if key and val and not str(val).startswith("enc:v1:"):
                         settings[str(key).strip()] = str(val).strip()
                 conn.close()
                 if settings:

@@ -14,7 +14,8 @@ import boardroomRoutes from './routes/boardroom.js';
 import desktopRoutes from './routes/desktop.js';
 import gscRoutes from './routes/gsc.js';
 import { startGscScheduler } from './services/gscScheduler.js';
-import { requestGuard, buildAllowedOriginCheck } from './services/requestGuard.js';
+import { requestGuard, buildAllowedOriginCheck, rateLimit } from './services/requestGuard.js';
+import { migrateSecretsToEncrypted } from './services/secretStore.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -29,8 +30,15 @@ app.use(requestGuard(PORT));
 app.use(cors({
   origin: (origin, cb) => cb(null, isAllowedOrigin(origin)),
 }));
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+// Large bodies only where needed (screenshots, chat images, .ruxt uploads); 5mb everywhere else
+const largeJson = express.json({ limit: '50mb' });
+app.use(['/api/desktop', '/api/chat', '/api/boardroom', '/api/agents', '/api/marketplace'], largeJson);
+app.use(express.json({ limit: '5mb' }));
+
+// Throttle expensive / destructive endpoints
+const strictLimit = rateLimit({ windowMs: 60_000, max: 20 });
+app.use(['/api/desktop/execute-live', '/api/desktop/execute-vision', '/api/desktop/execute-agent-s', '/api/desktop/launch', '/api/desktop/open-explorer', '/api/marketplace/import-package', '/api/settings/factory-reset', '/api/settings/clear-history'], strictLimit);
+app.use(express.urlencoded({ limit: '5mb', extended: true }));
 
 // API Routes
 app.use('/api', workspaceRoutes);
@@ -132,6 +140,8 @@ if (fs.existsSync(distDir)) {
 
 // Start Server
 const HOST = process.env.HOST || '127.0.0.1';
+try { migrateSecretsToEncrypted(); } catch (e) { console.warn('[RuXt] Secret migration skipped:', e.message); }
+
 const server = app.listen(PORT, HOST, () => {
   console.log(`[RuXt 2.1 Engine] Server running securely on http://${HOST}:${PORT}`);
   console.log(`[RuXt Hub] Marketplace Portal live at http://${HOST}:${PORT}/hub`);

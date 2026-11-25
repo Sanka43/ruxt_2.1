@@ -2,7 +2,7 @@ import { Router } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { execSync } from 'child_process';
+import { extractArchiveSafely, createArchive } from '../services/safeArchive.js';
 import db from '../db.js';
 import { invalidateAgentsCache } from './agents.js';
 
@@ -435,16 +435,7 @@ function packAgent(slug) {
     fs.mkdirSync(packagesDir, { recursive: true });
   }
   const outPackage = path.join(packagesDir, `${slug}.ruxt`);
-  try {
-    execSync(`tar -cf "${outPackage}" -C "${targetDir}" .`, { stdio: 'pipe' });
-  } catch (err) {
-    try {
-      const psCmd = `Compress-Archive -Path '${targetDir}\\*' -DestinationPath '${outPackage}' -Force`;
-      execSync(`powershell -Command "${psCmd}"`, { stdio: 'pipe' });
-    } catch (psErr) {
-      throw new Error(`Failed to archive agent package: ${err.message}`);
-    }
-  }
+  createArchive(targetDir, outPackage);
   return outPackage;
 }
 
@@ -594,10 +585,10 @@ router.post('/install', (req, res) => {
       fs.mkdirSync(targetDir, { recursive: true });
     }
 
-    // Extract package using native tar
+    // Extract package (validated, no shell)
     try {
-      execSync(`tar -xf "${packagePath}" -C "${targetDir}"`, { stdio: 'pipe' });
-      
+      extractArchiveSafely(packagePath, targetDir);
+
       const nestedDir = path.join(targetDir, slug);
       if (fs.existsSync(nestedDir) && fs.statSync(nestedDir).isDirectory()) {
         const nestedItems = fs.readdirSync(nestedDir);
@@ -610,12 +601,7 @@ router.post('/install', (req, res) => {
         try { fs.rmdirSync(nestedDir); } catch (_) {}
       }
     } catch (extractErr) {
-      try {
-        const psCmd = `Expand-Archive -Path '${packagePath}' -DestinationPath '${targetDir}' -Force`;
-        execSync(`powershell -Command "${psCmd}"`, { stdio: 'pipe' });
-      } catch (psErr) {
-        throw new Error(`Failed to extract package: ${extractErr.message}`);
-      }
+      throw new Error(`Failed to extract package: ${extractErr.message}`);
     }
 
     // Ensure public avatar exists if agent has avatar (.png, .jpg, .svg)
@@ -931,19 +917,18 @@ router.post('/import-package', (req, res) => {
     const savedPackagePath = path.join(packagesDir, `${slug}.ruxt`);
     fs.writeFileSync(savedPackagePath, buffer);
 
-    const targetDir = path.join(agentsDir, slug);
-    if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+    let targetDir = path.join(agentsDir, slug);
+    const createdDir = !fs.existsSync(targetDir);
+    if (createdDir) fs.mkdirSync(targetDir, { recursive: true });
 
     // Extract package
     try {
-      execSync(`tar -xf "${savedPackagePath}" -C "${targetDir}"`, { stdio: 'pipe' });
+      extractArchiveSafely(savedPackagePath, targetDir);
     } catch (extractErr) {
-      try {
-        const psCmd = `Expand-Archive -Path '${savedPackagePath}' -DestinationPath '${targetDir}' -Force`;
-        execSync(`powershell -Command "${psCmd}"`, { stdio: 'pipe' });
-      } catch (psErr) {
-        throw new Error(`Failed to extract package: ${extractErr.message}`);
-      }
+      // Don't keep an untrusted/invalid package or a half-created agent folder around
+      try { fs.rmSync(savedPackagePath, { force: true }); } catch (_) {}
+      if (createdDir) { try { fs.rmSync(targetDir, { recursive: true, force: true }); } catch (_) {} }
+      return res.status(400).json({ success: false, error: `Failed to extract package: ${extractErr.message}` });
     }
 
     // Check nested directory (handles cases where archive has top-level folder or filename has " (1)")
@@ -1044,7 +1029,7 @@ router.post('/import-package', (req, res) => {
       agentRole,
       description,
       manifest.version || '1.0.0',
-      installedAvatar || resolveAgentAvatar(slug),
+      resolveAgentAvatar(slug),
       uiEntry,
       JSON.stringify(manifest)
     );

@@ -50,3 +50,21 @@ export function requestGuard(port) {
     next();
   };
 }
+
+/** Tiny in-memory rate limiter (per IP + route group) for expensive or destructive endpoints. */
+export function rateLimit({ windowMs = 60_000, max = 20 } = {}) {
+  const hits = new Map();
+  return function limiter(req, res, next) {
+    const now = Date.now();
+    const key = `${req.ip}|${req.baseUrl}${req.path}`;
+    const entry = hits.get(key);
+    if (!entry || now > entry.reset) {
+      hits.set(key, { count: 1, reset: now + windowMs });
+    } else if (++entry.count > max) {
+      res.setHeader('Retry-After', Math.ceil((entry.reset - now) / 1000));
+      return res.status(429).json({ success: false, error: 'Too many requests, slow down.' });
+    }
+    if (hits.size > 1000) for (const [k, v] of hits) if (now > v.reset) hits.delete(k);
+    next();
+  };
+}

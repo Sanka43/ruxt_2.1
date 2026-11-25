@@ -2,7 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('ruxtDesktop', {
   platform: process.platform,
-  version: '2.0.0',
+  version: ipcRenderer.sendSync('app-get-version-sync'),
   getVersion: () => ipcRenderer.invoke('app-get-version'),
   minimize: () => ipcRenderer.send('window-minimize'),
   maximize: () => ipcRenderer.send('window-maximize'),

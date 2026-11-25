@@ -5,6 +5,7 @@ import path from 'path';
 import os from 'os';
 import { execSync, spawn } from 'child_process';
 import { maskSettings, isSecretSettingKey, isMaskedSecret } from '../services/secrets.js';
+import { loadSettingRows, encodeSettingForStorage } from '../services/secretStore.js';
 import { generateAIResponse, findAntigravityBinary, acpService } from '../services/aiProvider.js';
 
 const router = Router();
@@ -209,7 +210,7 @@ function resolveRuntime({
 // 1. Get all settings
 router.get('/', (req, res) => {
   try {
-    const rows = db.prepare('SELECT key, value FROM settings').all();
+    const rows = loadSettingRows();
     const settings = {
       active_provider: 'antigravity',
       antigravity_model: 'flash',
@@ -252,13 +253,13 @@ router.post('/', (req, res) => {
       VALUES (?, ?, CURRENT_TIMESTAMP)
       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
     `);
-    stmt.run(key, typeof value === 'object' ? JSON.stringify(value) : String(value));
+    stmt.run(key, encodeSettingForStorage(key, typeof value === 'object' ? JSON.stringify(value) : String(value)));
 
     if (key === 'engine_status_antigravity' && value === 'disconnected') {
       acpService.shutdown();
     }
 
-    res.json({ success: true, key, value });
+    res.json({ success: true, key, value: isSecretSettingKey(key) ? undefined : value });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -281,7 +282,7 @@ router.post('/batch', (req, res) => {
     const updateMany = db.transaction((entries) => {
       for (const [k, v] of Object.entries(entries)) {
         if (isSecretSettingKey(k) && isMaskedSecret(v)) continue;
-        insertOrUpdate.run(k, typeof v === 'object' ? JSON.stringify(v) : String(v));
+        insertOrUpdate.run(k, encodeSettingForStorage(k, typeof v === 'object' ? JSON.stringify(v) : String(v)));
       }
     });
 
@@ -524,7 +525,7 @@ function getCodexAuthInfo() {
 // 2d-3. Model providers and accounts status (Image 1 & 2 match)
 router.get('/providers-status', (req, res) => {
   try {
-    const rows = db.prepare('SELECT key, value FROM settings').all();
+    const rows = loadSettingRows();
     const settings = {};
     for (const r of rows) settings[r.key] = r.value;
 
@@ -943,7 +944,7 @@ router.get('/diagnostics', (req, res) => {
 router.get('/detect-runtimes', async (req, res) => {
   try {
     // Read saved custom path overrides
-    const rows = db.prepare('SELECT key, value FROM settings').all();
+    const rows = loadSettingRows();
     const settings = {};
     for (const row of rows) settings[row.key] = row.value;
 
@@ -1121,7 +1122,7 @@ router.post('/test-connection', async (req, res) => {
     const { provider, model, hostUrl, baseUrl, customPath } = req.body;
     const apiKey = isMaskedSecret(req.body.apiKey) ? '' : req.body.apiKey;
 
-    const rows = db.prepare('SELECT key, value FROM settings').all();
+    const rows = loadSettingRows();
     const dbSettings = {};
     for (const r of rows) dbSettings[r.key] = r.value;
 

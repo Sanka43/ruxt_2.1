@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import db from '../db.js';
+import { loadSettingRows } from '../services/secretStore.js';
 import { randomUUID } from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -333,7 +334,7 @@ ${systemPrompt}`;
     `).all(sessionId, userMsgId).reverse();
 
     // Fetch user configured settings
-    const settingsRows = db.prepare('SELECT key, value FROM settings').all();
+    const settingsRows = loadSettingRows();
     const settings = {
       active_provider: 'antigravity',
       antigravity_model: 'flash',

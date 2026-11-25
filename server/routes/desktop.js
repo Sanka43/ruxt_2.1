@@ -20,9 +20,14 @@ import {
   resumeVisionDesktopJob
 } from '../services/visionComputerUse.js';
 import { generateAIResponse } from '../services/aiProvider.js';
-import db from '../db.js';
+import db, { dataDir } from '../db.js';
+import os from 'os';
+import { loadSettingRows, providerKeyEnv } from '../services/secretStore.js';
 
 const router = Router();
+
+// Apps the UI may launch directly. Apps the user configured via app_path_<name> are also allowed.
+const LAUNCHABLE_APPS = new Set(['blender', 'vscode', 'cursor', 'notepad', 'chrome', 'paint']);
 
 // 1. Get status of common desktop applications on the host machine
 router.get('/apps', (req, res) => {
@@ -45,7 +50,7 @@ router.get('/apps', (req, res) => {
 export function resolveFastestProvider(explicitProvider = null, explicitModel = null, explicitApiKey = null) {
   let settings = {};
   try {
-    const rows = db.prepare('SELECT key, value FROM settings').all();
+    const rows = loadSettingRows();
     for (const r of rows) settings[r.key] = r.value;
   } catch (_) {}
 
@@ -237,14 +242,13 @@ router.post('/execute-agent-s', async (req, res) => {
     const args = ['--task', goal, '--json', '--max-steps', String(maxSteps)];
     args.push('--provider', fastest.provider);
     args.push('--model', fastest.model);
-    if (fastest.apiKey) args.push('--api-key', fastest.apiKey);
     if (baseUrl) args.push('--base-url', baseUrl);
     if (cursorMode) args.push('--cursor-mode', cursorMode);
 
     const pythonBin = process.platform === 'win32' ? 'python.exe' : 'python3';
     const child = spawn(pythonBin, [scriptPath, ...args], {
       cwd: path.dirname(scriptPath),
-      env: { ...process.env, PYTHONUNBUFFERED: '1' }
+      env: { ...process.env, ...providerKeyEnv(fastest.apiKey), PYTHONUNBUFFERED: '1' }
     });
 
     jobState.childProcess = child;
@@ -374,12 +378,24 @@ router.get('/active-status', (req, res) => {
 // 5. Open project folder in Windows File Explorer
 router.post('/open-explorer', (req, res) => {
   try {
-    const { targetPath } = req.body;
-    if (targetPath && fs.existsSync(targetPath)) {
-      spawn('explorer.exe', [targetPath], { detached: true, stdio: 'ignore' }).unref();
-      return res.json({ success: true });
+    const { targetPath } = req.body || {};
+    if (typeof targetPath !== 'string' || !targetPath || targetPath.startsWith('\\\\') || targetPath.startsWith('//')) {
+      return res.status(400).json({ error: 'Invalid path' });
     }
-    res.status(404).json({ error: 'Path not found' });
+    if (!fs.existsSync(targetPath)) return res.status(404).json({ error: 'Path not found' });
+
+    // Folders only (explorer.exe would run a file), and only inside the app data or user home folders
+    const real = fs.realpathSync(targetPath);
+    if (!fs.statSync(real).isDirectory()) return res.status(400).json({ error: 'Not a folder' });
+    const roots = [dataDir, os.homedir()].map((r) => { try { return fs.realpathSync(r); } catch (_) { return null; } }).filter(Boolean);
+    const inside = roots.some((root) => {
+      const rel = path.relative(root, real);
+      return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+    });
+    if (!inside) return res.status(403).json({ error: 'Path outside allowed folders' });
+
+    spawn('explorer.exe', [real], { detached: true, stdio: 'ignore' }).unref();
+    return res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -388,11 +404,18 @@ router.post('/open-explorer', (req, res) => {
 // 6. Direct launch application
 router.post('/launch', (req, res) => {
   try {
-    const { appName, args = [] } = req.body;
+    // Launch-only: no caller-supplied arguments (e.g. blender --python would run arbitrary code)
+    const { appName } = req.body || {};
+    if (typeof appName !== 'string' || !/^[\w .+-]{1,40}$/.test(appName)) {
+      return res.status(400).json({ error: 'Invalid application name' });
+    }
     const appInfo = findInstalledApplication(appName);
+    if (!LAUNCHABLE_APPS.has(appInfo.slug) && !appInfo.isCustom) {
+      return res.status(403).json({ error: 'Application is not on the launch allow-list' });
+    }
     if (appInfo.found && appInfo.exePath) {
-      spawn(appInfo.exePath, args, { detached: true, stdio: 'ignore' }).unref();
-      return res.json({ success: true, appInfo });
+      spawn(appInfo.exePath, [], { detached: true, stdio: 'ignore' }).unref();
+      return res.json({ success: true, appInfo: { found: true, name: appInfo.name, slug: appInfo.slug } });
     }
     res.status(404).json({ error: 'Application not found on system' });
   } catch (err) {

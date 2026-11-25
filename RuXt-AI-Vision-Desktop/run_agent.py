@@ -35,6 +35,9 @@ def main():
         config.provider = args.provider
     if args.model:
         config.model = args.model
+    env_key = os.environ.get("RUXT_AI_KEY")
+    if env_key:
+        config.api_key = env_key
     if args.api_key:
         config.api_key = args.api_key
     if args.base_url:

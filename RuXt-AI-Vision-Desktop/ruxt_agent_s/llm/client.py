@@ -6,6 +6,8 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 logger = logging.getLogger("ruxt_agent_s.llm")
+# httpx logs full request URLs at INFO; keep that out of logs as defense in depth.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 class MultiModalLLMClient:
     """
@@ -337,9 +339,10 @@ class MultiModalLLMClient:
             models_to_try.append("gemini-3.5-flash-lite")
 
         for attempt_model in models_to_try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{attempt_model}:generateContent?key={self.api_key}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{attempt_model}:generateContent"
             try:
-                resp = self.http_client.post(url, headers=headers, json=payload, timeout=8.0)
+                # Key goes in a header so it never appears in URLs or request logs.
+                resp = self.http_client.post(url, headers={**headers, "x-goog-api-key": self.api_key}, json=payload, timeout=8.0)
                 if resp.status_code == 200:
                     data = resp.json()
                     candidates = data.get("candidates", [])

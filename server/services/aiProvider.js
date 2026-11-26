@@ -286,7 +286,7 @@ async function callGemini({ apiKey, model, systemPrompt, userMessage, history, i
       targetModel = 'gemini-2.5-pro';
     }
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${apiKey.trim()}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent`;
     const payload = {
       systemInstruction: {
         parts: [{ text: systemPrompt }]
@@ -300,7 +300,7 @@ async function callGemini({ apiKey, model, systemPrompt, userMessage, history, i
 
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey.trim() },
       body: JSON.stringify(payload)
     });
 

@@ -58,7 +58,8 @@ test('scaffold: a new Excel agent is valid, complete and starts', { skip }, asyn
 test('scaffold refuses bad input and existing folders', () => {
   assert.throws(() => scaffoldAgent({ app: 'Bad App!', name: 'X', outDir: tmp }), /--app/);
   assert.throws(() => scaffoldAgent({ app: 'excel', name: '', outDir: tmp }), /--name/);
-  assert.throws(() => scaffoldAgent({ app: 'excel', name: 'Priya Nair', outDir: tmp }), /already exists/);
+  fs.mkdirSync(path.join(tmp, 'taken-name'), { recursive: true }); // must not rely on another (possibly skipped) test
+  assert.throws(() => scaffoldAgent({ app: 'excel', name: 'Taken Name', outDir: tmp }), /already exists/);
 });
 
 test('pack: Omer packs to a .ruxt that extracts, validates and leaves out generated files', () => {

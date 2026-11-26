@@ -21,6 +21,7 @@ yarn-error.log*
 
 # Local run data & sqlite databases
 data/
+!/server/data/
 err.txt
 out.txt
 

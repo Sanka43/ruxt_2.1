@@ -13,6 +13,7 @@ import marketplaceRoutes from './routes/marketplace.js';
 import boardroomRoutes from './routes/boardroom.js';
 import desktopRoutes from './routes/desktop.js';
 import gscRoutes from './routes/gsc.js';
+import toolApprovalRoutes from './routes/toolApprovals.js';
 import { startGscScheduler } from './services/gscScheduler.js';
 import { requestGuard, buildAllowedOriginCheck, rateLimit } from './services/requestGuard.js';
 import { migrateSecretsToEncrypted } from './services/secretStore.js';
@@ -50,6 +51,7 @@ app.use('/api/marketplace', marketplaceRoutes);
 app.use('/api/boardroom', boardroomRoutes);
 app.use('/api/desktop', desktopRoutes);
 app.use('/api/gsc', gscRoutes);
+app.use('/api/tool-approvals', toolApprovalRoutes);
 
 // Static assets directory resolver (handles dev, production asar, and unpacked asar)
 function resolveStaticDir(relName) {

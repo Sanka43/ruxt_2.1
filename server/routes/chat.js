@@ -368,6 +368,7 @@ ${systemPrompt}`;
     let workflowState = null;
     let desktopAction = null;
     let boardroomData = null;
+    let mcpEvents = []; // tool calls the agent made during this reply
 
     // 3. Strict & Safe Desktop Automation Intent Classification
     const isRuXtLeader = agentSlug === 'ruxt';
@@ -529,6 +530,7 @@ Deliver an authentic executive briefing: summarize the consensus decision reache
         replyContent = result.content;
         usedProvider = result.provider;
         usedModel = result.model;
+        mcpEvents = Array.isArray(result.mcpEvents) ? result.mcpEvents : [];
 
         // Persist Antigravity conversation ID to ensure seamless single-flow chat continuity in IDE
         if (result.conversationId && result.conversationId !== session?.antigravity_conversation_id) {

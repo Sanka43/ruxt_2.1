@@ -4,6 +4,7 @@ import path from 'path';
 import { acpService } from './acpService.js';
 import { execCliSync } from './safeExec.js';
 import { mcpClientManager } from './mcpClientManager.js';
+import { runOpenAIToolLoop, runClaudeToolLoop, runGeminiToolLoop, summarizeToolEvents } from './toolLoops.js';
 import { callAntigravityHost } from './antigravityBridge.js';
 export { findBinaryInPath, findAntigravityBinary, stealthPurgeHostConversation, callAntigravityHost } from './antigravityBridge.js';
 
@@ -84,7 +85,8 @@ export async function generateAIResponse({
             history,
             stealthHostMode: settings.stealth_host_mode === 'true',
             existingConversationId,
-            projectCwd
+            projectCwd,
+            agentSlug
           });
         }
         throw new Error('Google Gemini API Key is missing and local Antigravity is paused or disconnected.');
@@ -117,6 +119,9 @@ export async function generateAIResponse({
 
       case 'ollama':
       case 'local':
+        if (mcpTools.length > 0) {
+          throw new Error(`${agentSlug} needs tool calling, which the local Ollama engine does not support here`);
+        }
         return await callOllama({
           hostUrl: settings.ollama_host || 'http://localhost:11434',
           model: model || settings.ollama_model || 'deepseek-r1:latest',
@@ -132,7 +137,9 @@ export async function generateAIResponse({
           model: model || settings.custom_model || 'local-model',
           systemPrompt,
           userMessage,
-          history
+          history,
+          mcpTools,
+          agentSlug
         });
 
       case 'xai':
@@ -143,7 +150,10 @@ export async function generateAIResponse({
           model: model || settings.xai_model || 'grok-2-latest',
           systemPrompt,
           userMessage,
-          history
+          history,
+          mcpTools,
+          agentSlug,
+          label: 'xai'
         });
 
       case 'openrouter':
@@ -153,10 +163,15 @@ export async function generateAIResponse({
           model: model || settings.openrouter_model || 'google/gemini-2.0-flash-001',
           systemPrompt,
           userMessage,
-          history
+          history,
+          mcpTools,
+          agentSlug,
+          label: 'openrouter'
         });
     }
   } catch (err) {
+    // Tools already changed the user's PC: trying another provider would repeat those actions
+    if (err.afterTools) throw err;
     primaryError = err;
     console.warn(`[Primary Provider (${provider})]: ${err.message}. Trying available cascade fallbacks...`);
   }
@@ -176,7 +191,9 @@ export async function generateAIResponse({
         mcpTools,
         agentSlug
       });
-    } catch (_) {}
+    } catch (fallbackErr) {
+      if (fallbackErr.afterTools) throw fallbackErr;
+    }
   }
 
   // Fallback B: Configured OpenAI Cloud API Key
@@ -192,7 +209,9 @@ export async function generateAIResponse({
         mcpTools,
         agentSlug
       });
-    } catch (_) {}
+    } catch (fallbackErr) {
+      if (fallbackErr.afterTools) throw fallbackErr;
+    }
   }
 
   // Fallback C: Configured Anthropic Claude API Key
@@ -208,10 +227,12 @@ export async function generateAIResponse({
         mcpTools,
         agentSlug
       });
-    } catch (_) {}
+    } catch (fallbackErr) {
+      if (fallbackErr.afterTools) throw fallbackErr;
+    }
   }
 
-  // Fallback D: Running Google Antigravity Host IDE Bridge
+  // Fallback D: Running Google Antigravity Host IDE Bridge (runs the agent's MCP servers itself via ACP)
   if (settings.engine_status_antigravity !== 'paused' && settings.engine_status_antigravity !== 'disconnected') {
     try {
       const agyRes = await callAntigravityHost({
@@ -219,10 +240,16 @@ export async function generateAIResponse({
         userMessage,
         history,
         images,
-        stealthHostMode: settings.stealth_host_mode !== 'false'
+        stealthHostMode: settings.stealth_host_mode !== 'false',
+        agentSlug
       });
       if (agyRes) return agyRes;
     } catch (_) {}
+  }
+
+  // Fallbacks E-G cannot call tools. An agent whose job is to operate an app must not answer as if it had.
+  if (mcpTools.length > 0) {
+    throw new Error(`No AI engine that supports tool calling is available for ${agentName}. Add a Gemini, Claude, OpenAI, OpenRouter or xAI key, or connect Antigravity, in Settings.${primaryError ? ` (${primaryError.message})` : ''}`);
   }
 
   // Fallback E: Local Claude CLI
@@ -286,102 +313,23 @@ async function callGemini({ apiKey, model, systemPrompt, userMessage, history, i
       targetModel = 'gemini-2.5-pro';
     }
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent`;
-    const payload = {
-      systemInstruction: {
-        parts: [{ text: systemPrompt }]
-      },
-      contents: geminiContents
-    };
-
-    if (mcpTools && mcpTools.length > 0) {
-      payload.tools = mcpClientManager.toGeminiTools(mcpTools);
-    }
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey.trim() },
-      body: JSON.stringify(payload)
+    const geminiResult = await runGeminiToolLoop({
+      apiKey,
+      model: targetModel,
+      systemPrompt,
+      contents: geminiContents,
+      mcpTools,
+      agentSlug
     });
-
-    if (response.ok) {
-      const data = await response.json();
-      const candidate = data.candidates?.[0];
-      const parts = candidate?.content?.parts || [];
-
-      // Check for MCP Function Call
-      const functionCallPart = parts.find(p => p.functionCall);
-      if (functionCallPart && agentSlug) {
-        const fc = functionCallPart.functionCall;
-        console.log(`[MCP Tool Calling (Gemini)]: Executing ${fc.name}...`, fc.args);
-        let toolResult = null;
-        try {
-          toolResult = await mcpClientManager.callTool(agentSlug, fc.name, fc.args || {});
-        } catch (callErr) {
-          toolResult = { error: callErr.message };
-        }
-
-        geminiContents.push(candidate.content);
-        geminiContents.push({
-          role: 'user',
-          parts: [{
-            functionResponse: {
-              name: fc.name,
-              response: { content: toolResult }
-            }
-          }]
-        });
-
-        const followUpRes = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: systemPrompt }] },
-            contents: geminiContents
-          })
-        });
-
-        if (followUpRes.ok) {
-          const followUpData = await followUpRes.json();
-          const finalReply = followUpData.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (finalReply) {
-            return {
-              content: finalReply,
-              provider: 'Google Gemini Cloud (MCP Enabled)',
-              model: targetModel,
-              usage: followUpData.usageMetadata || null,
-              mcpEvents: [
-                {
-                  tool: fc.name,
-                  args: fc.args || {},
-                  result: toolResult
-                }
-              ]
-            };
-          }
-        }
-      }
-
-      const text = parts[0]?.text;
-      if (text) {
-        return {
-          content: text,
-          provider: 'Google Gemini Cloud',
-          model: targetModel,
-          usage: data.usageMetadata || null
-        };
-      }
-    } else {
-      const errText = await response.text();
-      console.warn(`[Gemini Cloud API HTTP ${response.status}]:`, errText);
-      let errorMsg = `Google Gemini API error ${response.status}`;
-      try {
-        const errJson = JSON.parse(errText);
-        if (errJson.error?.message) errorMsg += `: ${errJson.error.message}`;
-      } catch (_) {
-        errorMsg += `: ${errText.slice(0, 180)}`;
-      }
-      throw new Error(errorMsg);
+    const geminiText = geminiResult.content || (geminiResult.mcpEvents.length ? summarizeToolEvents(geminiResult.mcpEvents) : '');
+    if (geminiText) {
+      return {
+        content: geminiText,
+        provider: geminiResult.mcpEvents.length ? 'Google Gemini Cloud (MCP Enabled)' : 'Google Gemini Cloud',
+        model: targetModel,
+        usage: geminiResult.usage,
+        ...(geminiResult.mcpEvents.length ? { mcpEvents: geminiResult.mcpEvents } : {})
+      };
     }
   }
 
@@ -420,97 +368,22 @@ async function callClaude({ apiKey, model, systemPrompt, userMessage, history, i
       { role: 'user', content: userContent }
     ];
 
-    const payload = {
-      model: model || 'claude-3-7-sonnet-20250219',
-      max_tokens: 4096,
+    const claudeModel = model || 'claude-3-7-sonnet-20250219';
+    const claudeResult = await runClaudeToolLoop({
+      apiKey,
+      model: claudeModel,
       system: systemPrompt,
-      messages
-    };
-
-    if (mcpTools && mcpTools.length > 0) {
-      payload.tools = mcpClientManager.toClaudeTools(mcpTools);
-    }
-
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey.trim(),
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify(payload)
+      messages,
+      mcpTools,
+      agentSlug
     });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Claude API error (${response.status}): ${errText}`);
-    }
-
-    const data = await response.json();
-    const toolUseBlock = data.content?.find(c => c.type === 'tool_use');
-
-    // Handle MCP Tool Call Loop
-    if (toolUseBlock && agentSlug) {
-      console.log(`[MCP Tool Calling (Claude)]: Executing ${toolUseBlock.name}...`, toolUseBlock.input);
-      let toolResult = null;
-      try {
-        toolResult = await mcpClientManager.callTool(agentSlug, toolUseBlock.name, toolUseBlock.input || {});
-      } catch (callErr) {
-        toolResult = { error: callErr.message };
-      }
-
-      messages.push({ role: 'assistant', content: data.content });
-      messages.push({
-        role: 'user',
-        content: [
-          {
-            type: 'tool_result',
-            tool_use_id: toolUseBlock.id,
-            content: JSON.stringify(toolResult)
-          }
-        ]
-      });
-
-      const followUpRes = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey.trim(),
-          'anthropic-version': '2023-06-01'
-        },
-        body: JSON.stringify({
-          model: model || 'claude-3-7-sonnet-20250219',
-          max_tokens: 4096,
-          system: systemPrompt,
-          messages
-        })
-      });
-
-      if (followUpRes.ok) {
-        const followUpData = await followUpRes.json();
-        const content = followUpData.content?.map(c => c.text || '').join('\n') || '';
-        return {
-          content,
-          provider: 'Claude (MCP Enabled)',
-          model: model || 'claude-3-7-sonnet-20250219',
-          usage: followUpData.usage || null,
-          mcpEvents: [
-            {
-              tool: toolUseBlock.name,
-              args: toolUseBlock.input || {},
-              result: toolResult
-            }
-          ]
-        };
-      }
-    }
-
-    const content = data.content?.map(c => c.text || '').join('\n') || '';
+    const claudeText = claudeResult.content || (claudeResult.mcpEvents.length ? summarizeToolEvents(claudeResult.mcpEvents) : '');
     return {
-      content,
-      provider: 'claude',
-      model,
-      usage: data.usage || null
+      content: claudeText,
+      provider: claudeResult.mcpEvents.length ? 'Claude (MCP Enabled)' : 'claude',
+      model: claudeModel,
+      usage: claudeResult.usage,
+      ...(claudeResult.mcpEvents.length ? { mcpEvents: claudeResult.mcpEvents } : {})
     };
   }
 
@@ -611,91 +484,29 @@ async function callOpenAI({ apiKey, model, systemPrompt, userMessage, history, i
       { role: 'user', content: userContent }
     ];
 
-    const payload = {
-      model: model || 'gpt-4o-mini',
-      messages
-    };
-
-    if (mcpTools && mcpTools.length > 0) {
-      payload.tools = mcpClientManager.toOpenAITools(mcpTools);
-    }
-
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${activeKey.trim()}`
-      },
-      body: JSON.stringify(payload)
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      const choice = data.choices?.[0];
-      const toolCalls = choice?.message?.tool_calls;
-
-      if (toolCalls && toolCalls.length > 0 && agentSlug) {
-        const mcpEvents = [];
-        messages.push(choice.message);
-
-        for (const tc of toolCalls) {
-          let parsedArgs = {};
-          try {
-            parsedArgs = JSON.parse(tc.function.arguments || '{}');
-          } catch (_) {}
-
-          console.log(`[MCP Tool Calling (OpenAI)]: Executing ${tc.function.name}...`, parsedArgs);
-          let toolResult = null;
-          try {
-            toolResult = await mcpClientManager.callTool(agentSlug, tc.function.name, parsedArgs);
-          } catch (callErr) {
-            toolResult = { error: callErr.message };
-          }
-
-          mcpEvents.push({
-            tool: tc.function.name,
-            args: parsedArgs,
-            result: toolResult
-          });
-
-          messages.push({
-            role: 'tool',
-            tool_call_id: tc.id,
-            content: JSON.stringify(toolResult)
-          });
-        }
-
-        const followUpRes = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${activeKey.trim()}`
-          },
-          body: JSON.stringify({
-            model: model || 'gpt-4o-mini',
-            messages
-          })
-        });
-
-        if (followUpRes.ok) {
-          const followUpData = await followUpRes.json();
-          const content = followUpData.choices?.[0]?.message?.content || '';
-          return {
-            content,
-            provider: 'OpenAI (MCP Enabled)',
-            model: model || 'gpt-4o-mini',
-            usage: followUpData.usage || null,
-            mcpEvents
-          };
-        }
-      }
-
-      const content = choice?.message?.content || '';
-      return {
-        content,
-        provider: 'openai',
+    let openaiResult = null;
+    try {
+      openaiResult = await runOpenAIToolLoop({
+        url: 'https://api.openai.com/v1/chat/completions',
+        headers: { Authorization: `Bearer ${activeKey.trim()}` },
         model: model || 'gpt-4o-mini',
-        usage: data.usage || null
+        messages,
+        mcpTools,
+        agentSlug,
+        label: 'OpenAI'
+      });
+    } catch (loopErr) {
+      if (loopErr.afterTools) throw loopErr; // tools already ran: do not hide that behind another provider
+      console.warn('[OpenAI]:', loopErr.message); // otherwise fall through to the Codex CLI below, as before
+    }
+    if (openaiResult) {
+      const openaiText = openaiResult.content || (openaiResult.mcpEvents.length ? summarizeToolEvents(openaiResult.mcpEvents) : '');
+      return {
+        content: openaiText,
+        provider: openaiResult.mcpEvents.length ? 'OpenAI (MCP Enabled)' : 'openai',
+        model: model || 'gpt-4o-mini',
+        usage: openaiResult.usage,
+        ...(openaiResult.mcpEvents.length ? { mcpEvents: openaiResult.mcpEvents } : {})
       };
     }
   }
@@ -768,7 +579,7 @@ async function callOllama({ hostUrl, model, systemPrompt, userMessage, history }
 }
 
 // 5. Custom OpenAI-Compatible Server (LM Studio, vLLM, LocalAI)
-async function callCustomOpenAICompatible({ baseUrl, apiKey, model, systemPrompt, userMessage, history }) {
+async function callCustomOpenAICompatible({ baseUrl, apiKey, model, systemPrompt, userMessage, history, mcpTools = [], agentSlug = null, label = 'custom' }) {
   const cleanBase = (baseUrl || 'http://localhost:1234/v1').replace(/\/$/, '');
   const messages = [
     { role: 'system', content: systemPrompt },
@@ -776,31 +587,25 @@ async function callCustomOpenAICompatible({ baseUrl, apiKey, model, systemPrompt
     { role: 'user', content: userMessage }
   ];
 
-  const headers = { 'Content-Type': 'application/json' };
+  const headers = {};
   if (apiKey && apiKey !== 'not-needed') {
     headers['Authorization'] = `Bearer ${apiKey}`;
   }
 
-  const response = await fetch(`${cleanBase}/chat/completions`, {
-    method: 'POST',
+  const result = await runOpenAIToolLoop({
+    url: `${cleanBase}/chat/completions`,
     headers,
-    body: JSON.stringify({
-      model: model || 'default',
-      messages
-    })
+    model: model || 'default',
+    messages,
+    mcpTools,
+    agentSlug,
+    label: `${label} server`
   });
-
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Custom server error (${response.status}): ${errText}`);
-  }
-
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content || '';
   return {
-    content,
-    provider: 'custom',
-    model
+    content: result.content || (result.mcpEvents.length ? summarizeToolEvents(result.mcpEvents) : ''),
+    provider: label,
+    model,
+    ...(result.mcpEvents.length ? { mcpEvents: result.mcpEvents } : {})
   };
 }
 

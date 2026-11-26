@@ -4,6 +4,7 @@ import BoardRoomPanel from './components/BoardRoomPanel.jsx';
 import KanbanBoard from './components/KanbanBoard.jsx';
 import MarkdownRenderer from './components/MarkdownRenderer.jsx';
 import DesktopLiveOperatorCard from './components/DesktopLiveOperatorCard.jsx';
+import ToolApprovalPrompt from './components/ToolApprovalPrompt.jsx';
 import AgentStudioModal from './components/AgentStudioModal.jsx';
 import { 
   Bot, 
@@ -5335,6 +5336,9 @@ export default function App() {
         onChange={handleImportRuxtPackage}
         className="hidden"
       />
+
+      {/* Asks before an agent runs a tool its manifest marks as needing approval */}
+      <ToolApprovalPrompt />
 
       {/* Agent Studio Modal (Builder & Exporter) */}
       <AgentStudioModal

@@ -35,7 +35,16 @@ jobs:
         run: npm ci
 
       - name: Unit tests
-        run: npm test
+        shell: bash
+        run: |
+          set +e
+          npm test 2>&1 | tee test.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ]; then
+            # surface the failing tests in the run's annotations (the log needs a sign-in to read)
+            grep -E "^[[:space:]]*(✖|not ok|AssertionError|Error:|expected|actual|at .*\.test\.js)" test.log | head -25 | while IFS= read -r line; do echo "::error title=Unit test failure::${line:0:240}"; done
+          fi
+          exit $code
 
       - name: Build frontend
         run: npm run build

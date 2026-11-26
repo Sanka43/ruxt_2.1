@@ -1,0 +1,35 @@
+{
+  "format": "ruxt-agent-package/v3",
+  "slug": "{{SLUG}}",
+  "name": "{{NAME}}",
+  "role": "{{ROLE}}",
+  "headline": "{{ROLE}} that works in {{APP_TITLE}} on your PC",
+  "description": "{{NAME}} drives {{APP_TITLE}} on this PC through a local MCP server.",
+  "category": "Desktop Apps",
+  "version": "0.1.0",
+  "tags": ["{{APP_ID}}"],
+  "capabilities": ["{{APP_TITLE}} automation"],
+  "agent": { "name": "{{NAME}}", "role": "{{ROLE}}", "persona": "agent.md" },
+  "app": { "id": "{{APP_ID}}", "detect": ["{{APP_ENV}}", "PATH", "ProgramFiles"] },
+  "mcpServers": {
+    "{{APP_ID}}": {
+      "command": "python",
+      "args": ["${agentDir}/mcp/{{APP_ID}}_server.py", "--workspace", "${workspace}"],
+      "description": "{{APP_TITLE}} bridge"
+    }
+  },
+  "permissions": {
+    "apps": ["{{APP_ID}}"],
+    "filesystem": "agent",
+    "fsWrite": ["outputs/{{APP_ID}}-projects"],
+    "network": false,
+    "desktopControl": false,
+    "shell": false,
+    "approval": {
+      "app_status": "never",
+      "create_project": "never",
+      "list_projects": "never"
+    }
+  },
+  "adapters": { "skill": "skills/{{APP_ID}}/SKILL.md" }
+}

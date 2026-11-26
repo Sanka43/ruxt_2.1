@@ -1,0 +1,56 @@
+{
+  "format": "ruxt-agent-package/v3",
+  "slug": "omer-balika",
+  "name": "Omer Balika",
+  "role": "Blender 3D designer",
+  "headline": "Designs and builds 3D scenes in Blender on your PC",
+  "description": "Omer Balika is a Blender designer agent. He drives the Blender installed on this PC through his own MCP server: inspects the scene, runs generated bpy scripts, renders previews and saves verified .blend projects.",
+  "category": "3D & Creative Media",
+  "version": "0.2.0",
+  "tags": ["blender", "3d", "modeling", "animation", "render"],
+  "capabilities": [
+    "Blender modeling",
+    "Materials and lighting",
+    "Animation",
+    "Preview renders",
+    "Verified .blend output"
+  ],
+  "agent": {
+    "name": "Omer Balika",
+    "role": "Blender 3D designer",
+    "persona": "agent.md"
+  },
+  "app": {
+    "id": "blender",
+    "detect": ["BLENDER_BIN", "ProgramFiles/Blender Foundation", "LOCALAPPDATA/Programs/Blender Foundation", "PATH"],
+    "minVersion": "3.6"
+  },
+  "mcpServers": {
+    "blender": {
+      "command": "python",
+      "args": ["${agentDir}/mcp/blender_server.py", "--workspace", "${workspace}"],
+      "description": "Headless Blender bridge: projects, bpy scripts, scene info, preview renders, validation"
+    }
+  },
+  "permissions": {
+    "apps": ["blender"],
+    "filesystem": "agent",
+    "fsWrite": ["outputs/blender-projects"],
+    "network": false,
+    "desktopControl": false,
+    "shell": false,
+    "approval": {
+      "run_script": "first-use",
+      "open_in_blender": "never",
+      "render_preview": "never",
+      "scene_info": "never",
+      "validate_output": "never",
+      "create_project": "never",
+      "list_projects": "never",
+      "app_status": "never"
+    }
+  },
+  "adapters": {
+    "skill": "skills/blender-design/SKILL.md"
+  }
+}

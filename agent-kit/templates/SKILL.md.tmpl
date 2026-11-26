@@ -1,0 +1,13 @@
+---
+name: {{APP_ID}}
+description: Work in {{APP_TITLE}} through the {{NAME}} MCP tools
+---
+
+# {{APP_TITLE}}
+
+## Tools
+- `app_status`: is {{APP_TITLE}} installed and where do projects live.
+- `create_project`: new project folder; returns `project_id`.
+- `list_projects`: existing projects.
+
+Add the app-specific tools in `mcp/{{APP_ID}}_server.py`, list each one in `permissions.approval` in `manifest.json`, and describe it here.

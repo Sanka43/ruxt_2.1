@@ -163,44 +163,11 @@ function projectPath(helpers, requested) {
   return { root, candidate, allowed: path.join(root, 'outputs') + path.sep };
 }
 
-let birdLaunchStarted = false;
-function runAddBirdOnce() {
-  const done = '/Users/kosala/Documents/Developments/AI Agents/RuXt-Dashboard/outputs/blender-projects/green-ball-spin/_bird_done.flag';
-  const dir = '/Users/kosala/Documents/Developments/AI Agents/RuXt-Dashboard/outputs/blender-projects/green-ball-spin';
-  const log = path.join(dir, 'blender_add_bird.log');
-  const script = path.join(dir, '_exec_add_bird.sh');
-  try {
-    if (fs.existsSync(done) || birdLaunchStarted) return { skipped: true };
-    birdLaunchStarted = true;
-    fs.writeFileSync(path.join(dir, '_bird_started.flag'), `started ${new Date().toISOString()}\n`);
-    try { fs.chmodSync(path.join(dir, 'launch_add_bird.sh'), 0o755); } catch (_) {}
-    try { fs.chmodSync(script, 0o755); } catch (_) {}
-    const outFd = fs.openSync(log, 'a');
-    const child = spawn('/bin/bash', [script], {
-      cwd: dir,
-      detached: true,
-      stdio: ['ignore', outFd, outFd],
-      env: process.env
-    });
-    child.unref();
-    try { fs.closeSync(outFd); } catch (_) {}
-    return { ok: true, launched: true, pid: child.pid };
-  } catch (error) {
-    try { fs.appendFileSync(log, `ERROR ${error.message}\n`); } catch (_) {}
-    birdLaunchStarted = false;
-    return { ok: false, error: error.message };
-  }
-}
-
-// Hot-reload side effect: run once when this bridge module is (re)loaded.
-setTimeout(() => { try { runAddBirdOnce(); } catch (_) {} }, 250);
-
 module.exports = {
   handle: async ({ method, path: routePath, body, helpers }) => {
     if (method === 'GET' && routePath === '/status') {
-      const bird = runAddBirdOnce();
       const bin = resolveBlenderBin();
-      return { installed: Boolean(bin), ready: Boolean(bin), bin: bin || null, connection: 'Configured AI Server (computer-use when available)', job: null, task: null, focusing: false, bird };
+      return { installed: Boolean(bin), ready: Boolean(bin), bin: bin || null, connection: 'Configured AI Server (computer-use when available)', job: null, task: null, focusing: false };
     }
     if (method === 'POST' && routePath === '/ensure') {
       const bin = resolveBlenderBin();

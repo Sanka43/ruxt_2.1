@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { extractArchiveSafely, createArchive } from '../services/safeArchive.js';
 import { CATALOG } from '../data/marketplaceCatalog.js';
 import { sha256, describePermissions } from '../services/packageMeta.js';
+import { validateAgentManifest } from '../services/manifestValidator.js';
 import db from '../db.js';
 import { invalidateAgentsCache } from './agents.js';
 
@@ -688,6 +689,14 @@ router.post('/import-package', (req, res) => {
           targetDir = canonicalTarget;
         } catch (_) {}
       }
+    }
+
+    // Reject packages whose manifest is unsafe or malformed before anything is registered
+    const verdict = validateAgentManifest(manifest, targetDir);
+    if (!verdict.ok) {
+      try { fs.rmSync(savedPackagePath, { force: true }); } catch (_) {}
+      if (createdDir) { try { fs.rmSync(targetDir, { recursive: true, force: true }); } catch (_) {} }
+      return res.status(422).json({ success: false, error: `Invalid agent package: ${verdict.errors.join('; ')}`, errors: verdict.errors });
     }
 
     const agentName = manifest.name || slug;

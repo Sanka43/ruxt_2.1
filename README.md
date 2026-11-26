@@ -48,3 +48,6 @@ Live desktop tests (`test_live_execution.py` and friends) control your real mous
 - **Agent memory:** `GET /api/agents/<slug>/memory`, `.../memory/export` (download), `DELETE .../memory?scope=all|memories|experiences|preferences`, `DELETE .../memory/<id>`.
 - **Boardroom export:** `GET /api/boardroom/export/<id>` returns the session as Markdown.
 - **Per-step timings** (`observe`, `prepare`, `llm`, `act` in ms) are logged by the vision agent and included in each step event.
+
+## First-run setup guide
+New installs (no API key saved, no conversation yet) get a 3-step guide: welcome, connect an AI (Gemini, OpenAI, Claude, Ollama or Antigravity, with an honest connection test that does not count a silent fallback to another AI as success) and how approvals work. Existing users are never interrupted. Re-open it any time from Settings, Storage, "Run Setup Guide Again". The same card offers the support bundle download.

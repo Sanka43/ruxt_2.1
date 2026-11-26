@@ -2406,6 +2406,34 @@ export default function SettingsView({
                 </div>
               </div>
 
+              {/* Setup guide & support */}
+              <div className="p-5 rounded-2xl bg-slate-900/40 border border-slate-700/60 space-y-3">
+                <div className="flex items-center gap-2 text-indigo-300">
+                  <Sparkles className="w-4 h-4" />
+                  <span className="text-xs font-bold">Setup &amp; Support</span>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Re-open the first-run guide to switch AI provider or review how approvals work. The support bundle contains system info and recent logs with keys and e-mail addresses removed, so it is safe to attach to a bug report.
+                </p>
+                <div className="flex flex-wrap items-center gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => window.dispatchEvent(new CustomEvent('ruxt:open-onboarding'))}
+                    className="px-4 py-2 rounded-xl bg-indigo-600/90 hover:bg-indigo-600 text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-sm"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    Run Setup Guide Again
+                  </button>
+                  <a
+                    href="/api/settings/diagnostics/export"
+                    download="ruxt-diagnostics.json"
+                    className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold transition"
+                  >
+                    Download Support Bundle
+                  </a>
+                </div>
+              </div>
+
               {/* Danger Zone */}
               <div className="p-5 rounded-2xl bg-rose-950/20 border border-rose-500/30 space-y-3">
                 <div className="flex items-center gap-2 text-rose-400">

@@ -26,12 +26,24 @@ export function validateMcpServerConfig(conf, agentDir) {
   for (const arg of conf?.args || []) {
     const a = String(arg);
     if (!SCRIPT_ARG_RE.test(a)) continue;
-    const resolved = path.resolve(root, a);
-    if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+    if (scriptEscapesRoot(a, root)) {
       return { ok: false, reason: `script "${a}" is outside the agent folder` };
     }
   }
   return { ok: true };
+}
+
+/**
+ * True when a script argument points outside the agent folder. Judged the same on every OS, because a
+ * package written for Windows ("C:\\x.py", "..\\x.py") must be rejected on Linux and macOS too.
+ * `p` is the path module to use (tests pass path.posix).
+ */
+export function scriptEscapesRoot(arg, root, p = path) {
+  if (arg.split(/[\\/]+/).includes('..')) return true;
+  // absolute in some OS's notation but not in this one's (e.g. "C:\\x.py" on Linux): never allowed
+  if ((p.win32.isAbsolute(arg) || p.posix.isAbsolute(arg)) && !p.isAbsolute(arg)) return true;
+  const resolved = p.resolve(root, arg);
+  return resolved !== root && !resolved.startsWith(root + p.sep);
 }
 
 /**

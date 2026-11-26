@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { McpProcessClient, mcpClientManager, validateMcpServerConfig } from '../../services/mcpClientManager.js';
+import { McpProcessClient, mcpClientManager, validateMcpServerConfig, scriptEscapesRoot } from '../../services/mcpClientManager.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const STUB = path.join(here, 'fixtures', 'mcp-stub.mjs');
@@ -22,6 +22,18 @@ test('validateMcpServerConfig only allows interpreters and scripts inside the ag
   assert.equal(validateMcpServerConfig({ command: 'curl', args: [] }, dir).ok, false);
   assert.equal(validateMcpServerConfig({ command: 'python', args: ['../../evil.py'] }, dir).ok, false);
   assert.equal(validateMcpServerConfig({ command: 'python', args: ['C:\\temp\\evil.py'] }, dir).ok, false);
+});
+
+test('scriptEscapesRoot judges Windows and POSIX paths the same way on every OS', () => {
+  for (const p of [path.posix, path.win32]) {
+    const root = p === path.posix ? '/srv/agents/demo' : 'C:\\agents\\demo';
+    const inside = p === path.posix ? '/srv/agents/demo/mcp/a.py' : 'C:\\agents\\demo\\mcp\\a.py';
+    assert.equal(scriptEscapesRoot('mcp/a.py', root, p), false, `${p === path.posix ? 'posix' : 'win32'} relative`);
+    assert.equal(scriptEscapesRoot(inside, root, p), false, 'absolute inside');
+    for (const bad of ['../x.py', '..\\x.py', 'a/../../x.py', 'C:\\temp\\evil.py', '\\\\server\\share\\x.py', '/etc/x.py']) {
+      assert.equal(scriptEscapesRoot(bad, root, p), true, `${bad} on ${p === path.posix ? 'posix' : 'win32'}`);
+    }
+  }
 });
 
 test('client starts, lists tools and calls one', async () => {

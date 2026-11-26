@@ -65,4 +65,4 @@ jobs:
       # These modules have no GUI dependencies, so they run on a headless runner
       - name: Safety gate and loop guard tests
         working-directory: RuXt-AI-Vision-Desktop
-        run: python -m pytest tests/test_safety.py tests/test_loop_guard.py -q
+        run: python -m pytest tests/test_safety.py tests/test_loop_guard.py tests/test_monitors.py -q

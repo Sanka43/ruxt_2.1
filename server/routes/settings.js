@@ -5,6 +5,9 @@ import path from 'path';
 import os from 'os';
 import { execSync, spawn } from 'child_process';
 import { maskSettings, isSecretSettingKey, isMaskedSecret } from '../services/secrets.js';
+import { redactSecrets, tailFile } from '../services/diagnostics.js';
+import { encryptionEnabled } from '../services/secretStore.js';
+import { desktopAutomationSupported } from '../services/platformGuard.js';
 import { loadSettingRows, encodeSettingForStorage } from '../services/secretStore.js';
 import { generateAIResponse, findAntigravityBinary, acpService } from '../services/aiProvider.js';
 
@@ -935,6 +938,33 @@ router.get('/diagnostics', (req, res) => {
       },
       recentLogs: logs
     });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 2g. Support bundle: system info, masked settings and recent logs, with credentials scrubbed
+router.get('/diagnostics/export', (req, res) => {
+  try {
+    const settings = {};
+    for (const row of loadSettingRows()) settings[row.key] = row.value;
+
+    const activity = db.prepare('SELECT type, message, details, timestamp FROM activity_logs ORDER BY timestamp DESC LIMIT 100').all();
+    const bundle = {
+      generatedAt: new Date().toISOString(),
+      app: { version: '2.1.0', electron: process.versions.electron || null, node: process.version },
+      system: { os: os.type() + ' ' + os.release(), arch: os.arch(), memoryTotalMB: Math.round(os.totalmem() / 1048576) },
+      features: {
+        desktopAutomation: desktopAutomationSupported(),
+        keyEncryption: encryptionEnabled,
+        safetyMode: process.env.RUXT_SAFETY_MODE === 'off' ? 'off' : 'confirm'
+      },
+      settings: maskSettings(settings),
+      activity,
+      serverLogTail: tailFile(process.env.RUXT_LOG_FILE, 200)
+    };
+    res.setHeader('Content-Disposition', 'attachment; filename="ruxt-diagnostics.json"');
+    res.type('application/json').send(redactSecrets(JSON.stringify(bundle, null, 2)));
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

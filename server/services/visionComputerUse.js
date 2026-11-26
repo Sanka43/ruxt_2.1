@@ -509,6 +509,8 @@ export async function startVisionDesktopExecution({
                     description: parsed.message || 'Please complete action on screen and click Continue',
                     actionIcon: '🔑'
                   });
+                } else if (parsed.event === 'warning') {
+                  broadcast({ type: 'log', jobId, text: '[Warning] ' + (parsed.message || 'The agent reported a warning') });
                 } else if (parsed.event === 'approval_required') {
                   jobState.pendingApproval = { reason: parsed.reason, action: parsed.action, at: Date.now() };
                   completionController.transitionTo(TaskLifecycleState.WAITING_FOR_USER, parsed.message);

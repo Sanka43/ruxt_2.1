@@ -6,6 +6,34 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const ALLOWED_MCP_COMMANDS = new Set(['python', 'python3', 'py', 'node']);
+const SCRIPT_ARG_RE = /\.(py|js|mjs|cjs)$/i;
+const MAX_RESTARTS = 3;
+
+/**
+ * An agent manifest decides which program RuXt launches, so it must not be able to name
+ * arbitrary system binaries (powershell, cmd, curl...). Only script interpreters are
+ * allowed, and any script they run has to live inside the agent's own folder.
+ * Returns { ok: true } or { ok: false, reason }.
+ */
+export function validateMcpServerConfig(conf, agentDir) {
+  const command = String(conf?.command || 'python');
+  const base = path.basename(command).toLowerCase().replace(/\.exe$/, '');
+  if (command !== path.basename(command) || !ALLOWED_MCP_COMMANDS.has(base)) {
+    return { ok: false, reason: `command "${command}" is not an allowed interpreter (python, python3, py, node)` };
+  }
+  const root = path.resolve(agentDir);
+  for (const arg of conf?.args || []) {
+    const a = String(arg);
+    if (!SCRIPT_ARG_RE.test(a)) continue;
+    const resolved = path.resolve(root, a);
+    if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+      return { ok: false, reason: `script "${a}" is outside the agent folder` };
+    }
+  }
+  return { ok: true };
+}
+
 /**
  * Single MCP Server Client managing stdio JSON-RPC 2.0 communication
  */
@@ -20,10 +48,19 @@ export class McpProcessClient {
     this.pending = new Map();
     this.tools = [];
     this.isReady = false;
+    this.restarts = 0;
   }
 
   start() {
-    if (this.process && !this.process.killed) return Promise.resolve(this.tools);
+    if (this.process && this.isReady) return Promise.resolve(this.tools);
+    if (!this._starting) {
+      // concurrent callers share one launch instead of spawning duplicate servers
+      this._starting = this._launch().finally(() => { this._starting = null; });
+    }
+    return this._starting;
+  }
+
+  _launch() {
 
     return new Promise((resolve, reject) => {
       try {
@@ -52,6 +89,7 @@ export class McpProcessClient {
 
         this.process.on('close', code => {
           this.isReady = false;
+          this.process = null; // a dead process must never look alive to start()
           for (const [id, { reject: pReject }] of this.pending.entries()) {
             pReject(new Error(`MCP server ${this.serverKey} closed unexpectedly with code ${code}`));
           }
@@ -117,12 +155,13 @@ export class McpProcessClient {
         params
       };
 
+      const timeoutMs = Number(this.config.timeoutMs) > 0 ? Number(this.config.timeoutMs) : 30000;
       const timeout = setTimeout(() => {
         if (this.pending.has(id)) {
           this.pending.delete(id);
-          reject(new Error(`MCP request ${method} timed out after 30s`));
+          reject(new Error(`MCP request ${method} timed out after ${Math.round(timeoutMs / 1000)}s`));
         }
-      }, 30000);
+      }, timeoutMs);
 
       this.pending.set(id, {
         resolve: res => { clearTimeout(timeout); resolve(res); },
@@ -253,6 +292,12 @@ class McpClientManager {
         args: resolvedArgs
       };
 
+      const check = validateMcpServerConfig(conf, agentDir);
+      if (!check.ok) {
+        console.warn(`[RuXt MCP Manager]: Refusing to start ${clientKey}: ${check.reason}`);
+        continue;
+      }
+
       let client = this.clients.get(clientKey);
       if (!client || !client.isReady) {
         client = new McpProcessClient(clientKey, conf, agentDir);
@@ -280,12 +325,19 @@ class McpClientManager {
    */
   async callTool(agentSlug, toolName, args) {
     for (const [clientKey, client] of this.clients.entries()) {
-      if (clientKey.startsWith(`${agentSlug}:`) && client.isReady) {
-        const hasTool = client.tools.some(t => t.name === toolName);
-        if (hasTool) {
-          return await client.callTool(toolName, args);
+      if (!clientKey.startsWith(`${agentSlug}:`)) continue;
+      if (!client.tools.some(t => t.name === toolName)) continue;
+
+      // A server that crashed since its last use is restarted (a few times) instead of staying dead
+      if (!client.isReady) {
+        if (client.restarts >= MAX_RESTARTS) {
+          throw new Error(`MCP server ${clientKey} keeps crashing; not restarting it again.`);
         }
+        client.restarts++;
+        console.warn(`[RuXt MCP Manager]: Restarting ${clientKey} (attempt ${client.restarts}/${MAX_RESTARTS})`);
+        await client.start();
       }
+      return await client.callTool(toolName, args);
     }
     throw new Error(`Tool ${toolName} not found in any running MCP server for ${agentSlug}`);
   }

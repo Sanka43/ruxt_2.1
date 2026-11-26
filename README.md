@@ -41,3 +41,10 @@ npm run test:electron    # same, plus SQLite-backed tests (Electron's Node ABI)
 cd RuXt-AI-Vision-Desktop && python -m pytest tests/test_safety.py tests/test_loop_guard.py tests/test_safety_gate.py tests/test_agent.py
 ```
 Live desktop tests (`test_live_execution.py` and friends) control your real mouse and keyboard; run them deliberately.
+
+## Agents, memory and packages
+- **What an agent may do** is shown from its manifest (`permissions`: `network`, `filesystem` = `none|agent|user`, `desktopControl`, `shell`) plus any MCP servers it starts: `GET /api/marketplace/permissions/<slug>`, and in the install/import responses (`access`). Imports also return the package `sha256`; downloads carry an `X-Content-SHA256` header so a package can be compared with what its author published.
+- **MCP servers** may only be launched with `python`, `python3`, `py` or `node`, and their script must live inside the agent folder. A server that crashes is restarted on the next call (max 3 times).
+- **Agent memory:** `GET /api/agents/<slug>/memory`, `.../memory/export` (download), `DELETE .../memory?scope=all|memories|experiences|preferences`, `DELETE .../memory/<id>`.
+- **Boardroom export:** `GET /api/boardroom/export/<id>` returns the session as Markdown.
+- **Per-step timings** (`observe`, `prepare`, `llm`, `act` in ms) are logged by the vision agent and included in each step event.

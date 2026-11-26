@@ -87,6 +87,7 @@ class RuXtVisionAgent:
 
         self.history: List[Dict[str, Any]] = []
         self.loop_guard = LoopGuard()
+        self._warned_off_primary = False
 
         # Clean up any leftover signals from previous aborted runs
         for ap in self._get_signal_paths("abort.signal"):
@@ -648,6 +649,7 @@ class RuXtVisionAgent:
         logger.info(f"=== Starting RuXt Vision Task: '{task}' ===")
         self.history = []
         self.loop_guard.reset()
+        self._warned_off_primary = False
         max_steps = self.config.agent.max_steps
 
         # Clear any stale abort signals
@@ -675,9 +677,25 @@ class RuXtVisionAgent:
                     return {"success": False, "message": "Task aborted by user", "history": self.history}
 
                 logger.info(f"--- Step {step}/{max_steps} ---")
-                
+                t_step = time.perf_counter()
+
                 # 1. OBSERVE Screen (Downsampled & compressed for high-speed LLM inference)
                 obs = self.observer.capture(resize_for_model=True)
+                t_observed = time.perf_counter()
+
+                # The agent only sees the primary monitor; say so once instead of silently clicking the wrong screen
+                if not self._warned_off_primary and self.observer.foreground_off_primary():
+                    self._warned_off_primary = True
+                    warn_msg = ("The active window is on another monitor, but RuXt only sees your primary monitor. "
+                                "Move the window to the primary display for reliable results.")
+                    logger.warning(warn_msg)
+                    warn_event = {"event": "warning", "message": warn_msg, "step": step}
+                    if self.on_step_callback:
+                        self.on_step_callback(warn_event)
+                    try:
+                        print(json.dumps(warn_event), flush=True)
+                    except Exception:
+                        pass
                 
                 # 2. MICROSOFT OMNIPARSER v2 SET-OF-MARKS TAGGING
                 som_summary = ""
@@ -737,6 +755,7 @@ class RuXtVisionAgent:
                         "Inspect the screen carefully, address any new dialogs, popups, or state changes, and plan your next action accordingly.]"
                     )
 
+                t_prompted = time.perf_counter()
                 try:
                     llm_response = self.llm.generate(
                         system_prompt=SYSTEM_PROMPT,
@@ -756,6 +775,7 @@ class RuXtVisionAgent:
                         self.on_step_callback(err_step)
                     return {"success": False, "error": str(e), "history": self.history}
 
+                t_planned = time.perf_counter()
                 parsed = self._parse_response(llm_response)
                 actions_chain = parsed.get("actions", [])
                 if not actions_chain and parsed.get("action"):
@@ -847,8 +867,18 @@ class RuXtVisionAgent:
                     action_summary = " ; ".join(actions_chain) if len(actions_chain) > 1 else (actions_chain[0] if actions_chain else "none")
                 result_summary = " | ".join(results) if results else "No action executed"
 
+                t_acted = time.perf_counter()
+                timings_ms = {
+                    "observe": int((t_observed - t_step) * 1000),
+                    "prepare": int((t_prompted - t_observed) * 1000),
+                    "llm": int((t_planned - t_prompted) * 1000),
+                    "act": int((t_acted - t_planned) * 1000),
+                }
+                logger.info(f"Step {step} timing (ms): {timings_ms}")
+
                 step_data = {
                     "step": step,
+                    "timings_ms": timings_ms,
                     "reflection": parsed["reflection"],
                     "plan": parsed["plan"],
                     "action": action_summary,

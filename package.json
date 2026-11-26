@@ -72,7 +72,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "deleteAppDataOnUninstall": true
+      "deleteAppDataOnUninstall": false
     },
     "mac": {
       "target": [

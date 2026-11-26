@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import db from '../db.js';
 import { loadSettingRows } from '../services/secretStore.js';
 import { generateAIResponse } from '../services/aiProvider.js';
+import { loadMemory, memoryOverview, deleteMemory, clearMemory } from '../services/agentMemory.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -567,6 +568,48 @@ Respond ONLY with a JSON object in this format:
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ---- Agent memory management (inspect / export / forget what an agent has learned) ----
+const MEMORY_SLUG_RE = /^[a-z0-9_-]{1,64}$/i;
+
+function memorySlug(req, res) {
+  if (!MEMORY_SLUG_RE.test(req.params.slug || '')) {
+    res.status(400).json({ success: false, error: 'Invalid agent slug' });
+    return null;
+  }
+  return req.params.slug.toLowerCase();
+}
+
+router.get('/:slug/memory', (req, res) => {
+  const slug = memorySlug(req, res);
+  if (!slug) return;
+  res.json({ success: true, overview: memoryOverview(slug), memory: loadMemory(slug) });
+});
+
+router.get('/:slug/memory/export', (req, res) => {
+  const slug = memorySlug(req, res);
+  if (!slug) return;
+  res.setHeader('Content-Disposition', `attachment; filename="${slug}-memory.json"`);
+  res.json(loadMemory(slug));
+});
+
+router.delete('/:slug/memory/:id', (req, res) => {
+  const slug = memorySlug(req, res);
+  if (!slug) return;
+  const removed = deleteMemory(slug, req.params.id);
+  res.status(removed ? 200 : 404).json({ success: removed, error: removed ? undefined : 'Memory not found' });
+});
+
+router.delete('/:slug/memory', (req, res) => {
+  const slug = memorySlug(req, res);
+  if (!slug) return;
+  try {
+    const ok = clearMemory(slug, req.query.scope || 'all');
+    res.json({ success: ok, overview: memoryOverview(slug) });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
   }
 });
 

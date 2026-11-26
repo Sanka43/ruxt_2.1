@@ -102,6 +102,20 @@ class ScreenObserver:
             pass
         return windows
 
+    def foreground_off_primary(self) -> bool:
+        """True when the active window's center is NOT on the primary monitor (which is all the agent can see)."""
+        if platform.system() != "Windows":
+            return False
+        try:
+            import win32gui
+            from .monitors import window_on_monitor
+            hwnd = win32gui.GetForegroundWindow()
+            if not hwnd:
+                return False
+            return not window_on_monitor(win32gui.GetWindowRect(hwnd), self._sct.monitors[1])
+        except Exception:
+            return False
+
     def get_active_window_title(self) -> str:
         if platform.system() == "Windows":
             try:

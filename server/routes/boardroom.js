@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import db from '../db.js';
 import { conductBoardroomMeeting, executeTaskStep, runAutonomousPipeline } from '../services/orchestrator.js';
+import { boardroomToMarkdown, exportFileName } from '../services/boardroomExport.js';
 
 const router = Router();
 
@@ -59,6 +60,21 @@ router.post('/start', async (req, res) => {
     });
   } catch (err) {
     console.error('Boardroom start error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 2a. Export a session as a Markdown document
+router.get('/export/:id', (req, res) => {
+  try {
+    const session = db.prepare('SELECT * FROM boardroom_sessions WHERE id = ?').get(req.params.id);
+    if (!session) return res.status(404).json({ success: false, error: 'Boardroom session not found' });
+    const messages = db.prepare('SELECT * FROM boardroom_messages WHERE boardroom_id = ? ORDER BY created_at ASC').all(session.id);
+    const tasks = db.prepare('SELECT * FROM tasks WHERE boardroom_id = ? ORDER BY order_index ASC, created_at ASC').all(session.id);
+    res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="' + exportFileName(session.topic) + '"');
+    res.send(boardroomToMarkdown({ session, messages, tasks }));
+  } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });

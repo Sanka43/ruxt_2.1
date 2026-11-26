@@ -148,3 +148,12 @@ GitHub Actions මගින් ස්වයංක්‍රීයව `release.yml
 * **Build Frontend:** `npm run build`
 * **Unpacked App Test:** `npm run package`
 * **Generate Client Installers (.exe):** `npm run dist`
+
+---
+
+## 🔒 7. Security, data & signing notes (v2.1)
+- **Uninstall keeps your data.** The installer no longer deletes `%APPDATA%\ruxt-desktop` (chats, agents, settings) when you uninstall or reinstall. Delete that folder yourself for a full wipe.
+- **API keys are encrypted at rest** (AES-256-GCM). The key is protected by Windows DPAPI through Electron `safeStorage`. If the `master.key` file in the app-data folder is lost, saved keys can't be decrypted and must be entered again. Development mode (`npm run electron:dev`) stores keys unencrypted.
+- **Support bundle:** `GET /api/settings/diagnostics/export` downloads system info, masked settings and the last log lines with credentials and e-mail addresses removed. Attach it to bug reports. `server.log` rotates at 5 MB (previous run kept as `server.log.1`).
+- **Code signing is not configured.** Unsigned Windows installers trigger SmartScreen warnings and macOS builds can't be notarized. To enable it, add a certificate to the GitHub repository secrets (`CSC_LINK`, `CSC_KEY_PASSWORD`; for macOS also `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`) and remove `CSC_IDENTITY_AUTO_DISCOVERY: false` from `.github/workflows/release.yml`.
+- **Before tagging a release:** run `npm test` and `npm run test:electron`, then `python -m pytest tests/test_safety.py tests/test_loop_guard.py tests/test_monitors.py tests/test_safety_gate.py tests/test_agent.py` inside `RuXt-AI-Vision-Desktop`, and finally test the installer on a clean Windows machine/VM.

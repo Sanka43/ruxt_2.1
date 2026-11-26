@@ -284,7 +284,43 @@ export function formatMemoryContext(memories = []) {
          `\nStrictly adhere to these internalized lessons in your current execution.\n`;
 }
 
+const MEMORY_SCOPES = ['memories', 'experiences', 'preferences'];
+
+/** Counts and last-update time, without returning the memory contents. */
+export function memoryOverview(slug) {
+  const data = loadMemory(slug);
+  return {
+    slug: String(slug || '').toLowerCase(),
+    memories: data.memories.length,
+    experiences: data.experiences.length,
+    preferences: data.preferences.length,
+    updatedAt: data.agent?.updated_at || null
+  };
+}
+
+/** Removes one learned memory by id. Returns true if something was removed. */
+export function deleteMemory(slug, id) {
+  const data = loadMemory(slug);
+  const before = data.memories.length;
+  data.memories = data.memories.filter((m) => m.id !== id);
+  if (data.memories.length === before) return false;
+  return saveMemory(slug, data);
+}
+
+/** Clears one section ('memories' | 'experiences' | 'preferences') or everything ('all'). */
+export function clearMemory(slug, scope = 'all') {
+  if (scope !== 'all' && !MEMORY_SCOPES.includes(scope)) {
+    throw new Error(`scope must be one of: all, ${MEMORY_SCOPES.join(', ')}`);
+  }
+  const data = loadMemory(slug);
+  for (const key of scope === 'all' ? MEMORY_SCOPES : [scope]) data[key] = [];
+  return saveMemory(slug, data);
+}
+
 export default {
+  memoryOverview,
+  deleteMemory,
+  clearMemory,
   resolveAgentDir,
   resolveMemoryFilePath,
   loadMemory,

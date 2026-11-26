@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { extractArchiveSafely, createArchive } from '../services/safeArchive.js';
 import { CATALOG } from '../data/marketplaceCatalog.js';
+import { sha256, describePermissions } from '../services/packageMeta.js';
 import db from '../db.js';
 import { invalidateAgentsCache } from './agents.js';
 
@@ -226,7 +227,26 @@ router.get('/download/:slug', (req, res) => {
     return res.status(404).json({ error: `Package for ${slug} not found.` });
   }
 
+  try { res.setHeader('X-Content-SHA256', sha256(packagePath)); } catch (_) {}
   res.download(packagePath, `${slug}.ruxt`);
+});
+
+// 2b. What an installed agent is allowed to do (read from its manifest)
+router.get('/permissions/:slug', (req, res) => {
+  const { slug } = req.params;
+  if (!isValidSlug(slug)) return res.status(400).json({ error: 'Invalid agent slug identifier' });
+  const dirs = [path.join(agentsDir, slug), path.join(bundledAgentsDir, slug)];
+  for (const dir of dirs) {
+    const manifestPath = path.join(dir, 'manifest.json');
+    if (!fs.existsSync(manifestPath)) continue;
+    try {
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+      return res.json({ success: true, slug, access: describePermissions(manifest) });
+    } catch (err) {
+      return res.status(422).json({ success: false, error: 'manifest.json is not valid JSON' });
+    }
+  }
+  res.status(404).json({ success: false, error: 'Agent not found' });
 });
 
 // 3. Install agent from local package archive
@@ -339,6 +359,7 @@ router.post('/install', (req, res) => {
     res.json({
       success: true,
       message: `Successfully installed ${agentName}!`,
+      access: describePermissions(manifest),
       agent: {
         id: manifest.id || slug,
         slug,
@@ -593,6 +614,7 @@ router.post('/import-package', (req, res) => {
 
     const cleanBase64 = fileBase64.includes(';base64,') ? fileBase64.split(';base64,').pop() : fileBase64;
     const buffer = Buffer.from(cleanBase64, 'base64');
+    const packageSha256 = sha256(buffer);
     
     let baseName = (fileName || 'imported-agent.ruxt').replace(/\.(ruxt|🔰|zip)$/i, '');
     let slug = baseName.toLowerCase().replace(/[^a-z0-9_-]/g, '-').replace(/^-+|-+$/g, '') || `agent-${Date.now()}`;
@@ -728,6 +750,8 @@ router.post('/import-package', (req, res) => {
     res.json({
       success: true,
       message: `Successfully imported ${agentName}!`,
+      sha256: packageSha256,
+      access: describePermissions(manifest),
       agent: {
         slug,
         name: agentName,

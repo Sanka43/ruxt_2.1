@@ -236,6 +236,13 @@ function startBackendServer() {
       const logDir = app.getPath('userData');
       if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
       const logFile = path.join(logDir, 'server.log');
+      // Rotate so the log cannot grow forever: keep the previous run as server.log.1
+      try {
+        if (fs.existsSync(logFile) && fs.statSync(logFile).size > 5 * 1024 * 1024) {
+          fs.renameSync(logFile, logFile + '.1');
+        }
+      } catch (_) {}
+      process.env.RUXT_LOG_FILE = logFile;
       logStream = fs.createWriteStream(logFile, { flags: 'a' });
       stdioConfig = ['ignore', 'pipe', 'pipe'];
     } catch (_) {}
@@ -247,6 +254,7 @@ function startBackendServer() {
         ...(masterKey ? { RUXT_MASTER_KEY: masterKey } : {}),
         PORT: String(serverPort),
         RUXT_DATA_DIR: userDataDir,
+        RUXT_LOG_FILE: process.env.RUXT_LOG_FILE || '',
         RUXT_AGENTS_DIR: bundledAgentsDir,
         RUXT_PACKAGES_DIR: bundledPackagesDir,
         ELECTRON_RUN_AS_NODE: '1'
